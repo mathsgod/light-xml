@@ -1,6 +1,6 @@
 # LINQ to XML
 
-[套件說明](../README.md) · [Enumerable](../../light-linq/docs/enumerable.md)
+[套件說明](../README.md) · [Enumerable](https://github.com/mathsgod/light-linq/blob/v1.0.0/docs/enumerable.md)
 
 XML API 以 DOM 為基礎，需要 `ext-dom`。先載入專案的 Composer autoloader。
 
@@ -56,3 +56,34 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 使用 `{namespace-uri}localName` 或 `new XName($localName, $namespaceUri)`。單純 `'user'` 只匹配沒有 namespace 的元素，不能以 XML prefix 代替 namespace URI。預設 namespace 內的元素亦須指定 URI。
 
 建立、修改及儲存 XML 的完整範例請參考[套件說明](../README.md)。目前仍是 Microsoft LINQ to XML 的功能子集。
+
+
+## replaceAll：替換全部 attributes 與子節點
+
+```php
+$root = XElement::parse('<Root old="yes"><Data>1</Data><Data>2</Data><Data>3</Data></Root>');
+$root->replaceAll(
+    new XAttribute('version', 2),
+    $root->elements('Data')
+        ->where(fn ($element) => (int) $element->value() >= 2)
+        ->select(fn ($element) => new XElement('NewData', $element->value())),
+);
+// <Root version="2"><NewData>2</NewData><NewData>3</NewData></Root>
+```
+
+`XElement::replaceAll(mixed ...$content): void` 保留元素名稱、元素本身及其 parent，
+取代 attributes 和全部子節點（包括文字、comment、CDATA 及 processing instruction）。
+其他指向該元素的 wrapper 會看到更新。與 `removeNodes()` 不同，它亦移除原有 attributes。
+
+內容規則與 `add()` 相同，接受 XElement、XAttribute、scalar、巢狀 iterable 及 null。
+純量以文字加入並作 XML escaping；bool 轉為 `true`／`false`。
+`replaceAll()`、`replaceAll(null)` 或空 iterable 均會清空元素內容及 attributes。
+
+方法先完整列舉並複製新內容，再修改原樹，因此可以直接傳入自身的
+`elements()`／`attributes()` 延遲查詢或單次 Generator。
+新內容有重複 attribute、無效型別，或輸入列舉拋出例外時，目標保持不變；
+使用者 Generator／callback 自行修改目標的副作用則不會回滾。
+已存在的元素一律深層複製，不會從原樹搬走。已刪除子節點的舊 wrapper 仍代表舊節點。
+
+namespace 的 URI／local name 會保留，但 DOM 可能保留 namespace 宣告，或使用不同 prefix；
+不保證與 .NET 輸出字串逐字相同。本實作沒有 .NET 的 Changing／Changed 事件。

@@ -83,6 +83,28 @@ final class XElement extends XNode
         }
     }
 
+    /** Replace attributes and child nodes after materializing and validating all new content. */
+    public function replaceAll(mixed ...$content): void
+    {
+        // Building a detached tree first snapshots lazy queries over this element,
+        // copies existing nodes, and leaves the target untouched if input fails.
+        $replacement = new self($this->name(), ...$content);
+        $attributes = $replacement->attributes()->toArray();
+        $nodes = [];
+        foreach ($replacement->elementNode->childNodes as $child) {
+            $nodes[] = $this->elementNode->ownerDocument->importNode($child, true);
+        }
+
+        foreach ($this->attributes()->toArray() as $attribute) {
+            $attribute->remove();
+        }
+        $this->removeNodes();
+        $this->add($attributes);
+        foreach ($nodes as $child) {
+            $this->elementNode->appendChild($child);
+        }
+    }
+
     public function setValue(string|int|float|bool $value): void
     {
         $this->removeNodes();

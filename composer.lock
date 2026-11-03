@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "88043df62396c0118e61857131e61832",
+    "content-hash": "94305877dfea10a9ba554dfde0091bbc",
     "packages": [
         {
             "name": "mathsgod/light-collections",
@@ -44,12 +44,18 @@
             "time": "2026-11-03T03:30:36+00:00"
         },
         {
-            "name": "mathsgod/php-linq",
-            "version": "dev-main",
+            "name": "mathsgod/light-linq",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/mathsgod/light-linq.git",
+                "reference": "b687487d2e7e1d7f792f1255dabea97dfca7263f"
+            },
             "dist": {
-                "type": "path",
-                "url": "../light-linq",
-                "reference": "c3edb1bc54cb9dcc1e900e3e07e47eb2db1e19f4"
+                "type": "zip",
+                "url": "https://api.github.com/repos/mathsgod/light-linq/zipball/b687487d2e7e1d7f792f1255dabea97dfca7263f",
+                "reference": "b687487d2e7e1d7f792f1255dabea97dfca7263f",
+                "shasum": ""
             },
             "require": {
                 "mathsgod/light-collections": "^1.0",
@@ -64,19 +70,16 @@
                     "Light\\Linq\\": "src/"
                 }
             },
-            "scripts": {
-                "test": [
-                    "phpunit"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
             "description": "A provider-based LINQ-style query library for PHP",
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "issues": "https://github.com/mathsgod/light-linq/issues",
+                "source": "https://github.com/mathsgod/light-linq/tree/v1.0.0"
+            },
+            "time": "2026-11-03T08:33:39+00:00"
         }
     ],
     "packages-dev": [
@@ -1800,9 +1803,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "mathsgod/php-linq": 20
-    },
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {

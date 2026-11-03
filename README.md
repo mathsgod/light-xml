@@ -4,7 +4,7 @@ A LINQ-style XML package for PHP 8.3+, inspired by the core [.NET XDocument](htt
 
 ## Requirements and development setup
 
-Requires PHP 8.3+ and `ext-dom`. The adjacent `../light-linq` and `../light-collections` directories are used as local Composer path repositories. light-linq provides `IEnumerable` queries and depends on the standalone collections package. The XML implementation, query tests, and fixtures have been moved from light-linq into this package.
+Requires PHP 8.3+ and `ext-dom`. Depends on the published `mathsgod/light-linq ^1.0` package from Packagist. light-linq provides `IEnumerable` queries and depends on the standalone collections package. The XML implementation, query tests, and fixtures have been moved from light-linq into this package.
 
 ```sh
 composer install
@@ -85,6 +85,7 @@ Constructors and `add()` accept elements and nested iterables. Elements also acc
 | `setElementValue($name, $value)` | Updates the first matching child element or adds one; null removes it |
 | `setAttributeValue($name, $value)` | Adds or updates an attribute; null removes it |
 | `removeNodes()` | Removes child nodes while preserving element attributes |
+| `replaceAll(...$content)` | Replaces attributes and child nodes after snapshotting new content |
 | `XElement::remove()` | Removes the element from its parent |
 | `XElement::parent()` | Returns the parent element, or null |
 | `XAttribute::setValue()` / `remove()` | Updates or removes an attribute |
@@ -92,6 +93,28 @@ Constructors and `add()` accept elements and nested iterables. Elements also acc
 Wrappers returned by queries reference nodes in the original document, so edits update that document. Passing an existing element to a constructor or `add()` **always creates a deep copy** instead of moving the original node. This is an explicit rule of this implementation; .NET may attach an unparented node directly to the new tree.
 
 Adding a duplicate attribute name throws `InvalidArgumentException`; use `setAttributeValue()` to overwrite it. Calling `remove()` on an element or attribute without a parent throws `LogicException`.
+
+### Replace all element content
+
+```php
+$root = XElement::parse('<Root old="yes"><Data>1</Data><Data>3</Data></Root>');
+$root->replaceAll(
+    new XAttribute('version', 2),
+    $root->elements('Data')->where(fn ($element) => (int) $element->value() >= 3),
+);
+// <Root version="2"><Data>3</Data></Root>
+```
+
+`replaceAll()` keeps the element itself and its parent, replacing its attributes
+and all child nodes. It accepts the same content as `add()`: elements,
+attributes, scalars, nested iterables and null. No arguments or empty content
+clear the element. Input is fully materialized and copied before editing the
+target, so queries over the current element work safely. Invalid content,
+duplicate attributes or input iteration failures leave the target unchanged
+(unless user callbacks themselves modify it). Existing source trees are copied.
+
+Namespace names survive serialization; DOM may retain namespace declarations
+or choose different prefixes. This does not implement .NET change events.
 
 ## Namespaces
 
@@ -119,7 +142,7 @@ Malformed XML, unreadable input files, and invalid content raise exceptions. An 
 
 ## Differences from .NET
 
-The core creation, copying, loading, querying, editing, and saving workflows are supported. Features not yet implemented include the full node construction API, such as `XDeclaration` and `XComment`, events, annotations, async operations, stream readers/writers, XSD validation, complete navigation, and replacement methods. Parsed document-level comments and processing instructions are preserved during serialization, but dedicated wrappers are not yet available.
+The core creation, copying, loading, querying, editing, and saving workflows are supported. Features not yet implemented include the full node construction API, such as `XDeclaration` and `XComment`, events, annotations, async operations, stream readers/writers, XSD validation, complete navigation, and replacement methods other than `XElement::replaceAll()`. Parsed document-level comments and processing instructions are preserved during serialization, but dedicated wrappers are not yet available.
 
 ## Migrating from light-linq XML
 

@@ -6,21 +6,11 @@
     "require": {
         "php": ">=8.3",
         "ext-dom": "*",
-        "mathsgod/php-linq": "@dev"
+        "mathsgod/light-linq": "^1.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^12.5",
-        "mathsgod/light-collections": "^1.0"
+        "phpunit/phpunit": "^12.5"
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../light-linq",
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
     "autoload": {
         "psr-4": {
             "Light\\Xml\\Linq\\": "src/linq/"
