@@ -4,7 +4,7 @@ A LINQ-style XML package for PHP 8.3+, inspired by the core [.NET XDocument](htt
 
 ## Requirements and development setup
 
-Requires PHP 8.3+ and `ext-dom`. The adjacent `../light-linq` directory is currently used as a local Composer path dependency to provide `IEnumerable` queries. The XML implementation, query tests, and fixtures have been moved from light-linq into this package.
+Requires PHP 8.3+ and `ext-dom`. The adjacent `../light-linq` and `../light-collections` directories are used as local Composer path repositories. light-linq provides `IEnumerable` queries and depends on the standalone collections package. The XML implementation, query tests, and fixtures have been moved from light-linq into this package.
 
 ```sh
 composer install
@@ -125,4 +125,4 @@ The core creation, copying, loading, querying, editing, and saving workflows are
 
 The old `Light\Linq\Xml` classes have been removed. Add this package as an application dependency and update imports to `Light\Xml\Linq`, for example: `use Light\Xml\Linq\XDocument;`.
 
-Existing parse/load, root, elements/descendants, attribute/attributes, XName, and toXml usage remains supported. Previous query examples are available in the [XML query guide](docs/xml.md). light-linq retains collection queries and provider functionality; only this package requires `ext-dom`. The dependency direction is light-xml → light-linq.
+Existing parse/load, root, elements/descendants, attribute/attributes, XName, and toXml usage remains supported. Previous query examples are available in the [XML query guide](docs/xml.md). light-linq retains collection queries and provider functionality; only this package requires `ext-dom`. The dependency direction is light-xml → light-linq → light-collections.

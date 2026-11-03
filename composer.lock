@@ -4,17 +4,52 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "47caf3e234a9d06bd00a6d0bd39a9ec6",
+    "content-hash": "11752c36f21245c907d85721c8cfe71d",
     "packages": [
+        {
+            "name": "mathsgod/light-collections",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "../light-collections",
+                "reference": "78c860db49f058801d2719d97a5e64f6e998a389"
+            },
+            "require": {
+                "php": ">=8.3"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^12.5"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Light\\Collections\\": "src/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Standalone .NET-style generic collections for PHP",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
         {
             "name": "mathsgod/php-linq",
             "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "../light-linq",
-                "reference": "efda5f0b3298c38bf69a83b258695d04840ffcc7"
+                "reference": "064c3fe832b9172707cdb31f46bde3a3aa77f185"
             },
             "require": {
+                "mathsgod/light-collections": "@dev",
                 "php": ">=8.3"
             },
             "require-dev": {
@@ -1763,6 +1798,7 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
+        "mathsgod/light-collections": 20,
         "mathsgod/php-linq": 20
     },
     "prefer-stable": false,

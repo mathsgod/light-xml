@@ -9,13 +9,31 @@
         "mathsgod/php-linq": "@dev"
     },
     "require-dev": {
-        "phpunit/phpunit": "^12.5"
+        "phpunit/phpunit": "^12.5",
+        "mathsgod/light-collections": "@dev"
     },
     "repositories": [
-        { "type": "path", "url": "../light-linq", "options": { "symlink": true } }
+        {
+            "type": "path",
+            "url": "../light-linq",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "type": "path",
+            "url": "../light-collections",
+            "options": {
+                "symlink": true
+            }
+        }
     ],
     "autoload": {
-        "psr-4": { "Light\\Xml\\Linq\\": "src/linq/" }
+        "psr-4": {
+            "Light\\Xml\\Linq\\": "src/linq/"
+        }
     },
-    "scripts": { "test": "phpunit" }
+    "scripts": {
+        "test": "phpunit"
+    }
 }
