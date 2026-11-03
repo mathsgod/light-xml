@@ -10,19 +10,12 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5",
-        "mathsgod/light-collections": "@dev"
+        "mathsgod/light-collections": "^1.0"
     },
     "repositories": [
         {
             "type": "path",
             "url": "../light-linq",
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../light-collections",
             "options": {
                 "symlink": true
             }
