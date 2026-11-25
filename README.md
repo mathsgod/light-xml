@@ -164,9 +164,3 @@ Loading preserves whitespace by default. Pass `options: LoadOptions::None` to le
 ## Differences from .NET
 
 The package covers synchronous XML construction, navigation, editing and I/O. Async I/O and XSD validation are outside the current API. The per-class guides describe the supported options and behaviors.
-
-## Migrating from light-linq XML
-
-The old `Light\Linq\Xml` classes have been removed. Add this package as an application dependency and import types from `Light\Xml\Linq`, such as `XDocument`.
-
-Existing parse/load, root, elements/descendants, attribute/attributes, XName, and toXml usage remains supported. Previous query examples are available in the [XML query guide](docs/xml.md). Light-linq retains collection queries and provider functionality. Only this package requires `ext-dom`. The dependency direction is light-xml → light-linq → light-collections.
