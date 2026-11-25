@@ -57,7 +57,16 @@ final class XAttribute extends XObject
     public static function attach(\DOMElement $owner, DOMAttr $attribute): void
     {
         $sender = new self($attribute);
-        $sender->change(XObjectChange::Add, static fn () => $owner->setAttributeNodeNS($attribute), $owner);
+        $sender->change(XObjectChange::Add, static function () use ($owner, $attribute): void {
+            $prefix = $attribute->prefix;
+            $namespace = $attribute->namespaceURI;
+            // PHP 8.3 may attach an imported attribute without declaring its prefix.
+            if ($prefix !== '' && $prefix !== null && $prefix !== 'xml' && $namespace !== null
+                && $owner->lookupNamespaceURI($prefix) !== $namespace) {
+                $owner->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:'.$prefix, $namespace);
+            }
+            $owner->setAttributeNodeNS($attribute);
+        }, $owner);
     }
 
     public function name(): XName

@@ -237,7 +237,7 @@ final class XElement extends XContainer
             $attribute = $staging->createAttribute($name->localName);
         } else {
             $prefix = $this->elementNode->lookupPrefix($name->namespaceName);
-            if ($prefix === null || $prefix === '') {
+            if ($prefix === null || $prefix === '' || $this->elementNode->lookupNamespaceURI($prefix) !== $name->namespaceName) {
                 $index = 1;
                 do {
                     $prefix = 'ns'.$index++;

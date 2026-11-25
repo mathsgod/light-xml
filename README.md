@@ -7,7 +7,7 @@ A LINQ-style XML package for PHP 8.3+, inspired by the core [.NET XDocument](htt
 Install the Composer package in your application.
 
 ```sh
-composer require mathsgod/php-xml
+composer require mathsgod/light-xml
 ```
 
 Requires PHP 8.3+ and `ext-dom`. Composer installs `mathsgod/light-linq ^1.0` for lazy `IEnumerable` queries.

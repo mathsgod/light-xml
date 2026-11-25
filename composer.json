@@ -1,5 +1,5 @@
 {
-    "name": "mathsgod/php-xml",
+    "name": "mathsgod/light-xml",
     "description": "LINQ-style XML construction, querying and editing for PHP",
     "type": "library",
     "license": "MIT",
