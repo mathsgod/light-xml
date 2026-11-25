@@ -282,7 +282,7 @@ final class XDocument
 
     private static function newDocument(): DOMDocument
     {
-        $document = new DOMDocument('1.0', 'UTF-8');
+        $document = new AnnotationDocument('1.0', 'UTF-8');
         $document->resolveExternals = false;
         $document->substituteEntities = false;
         return $document;

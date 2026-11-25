@@ -16,7 +16,7 @@ final class XAttribute extends XNode
             $this->attribute = $name;
         } else {
             $name = XName::from($name);
-            $document = new \DOMDocument('1.0', 'UTF-8');
+            $document = new AnnotationDocument('1.0', 'UTF-8');
             $holder = $document->createElement('holder');
             $document->appendChild($holder);
             if ($name->namespaceName === '') {

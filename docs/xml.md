@@ -77,7 +77,24 @@ $document->root()->comments()->single()->setValue('已更新');
 包括從 XML 讀取的註解。可用 `value()` 讀取內容、`setValue()` 修改，
 或用 `remove()` 從文件移除。加入註解時會複製節點，透過 `comments()` 取出的註解則可直接編輯原樹。
 
-## Namespace 與 XName
+## Namespace、XNamespace 與 XName
+
+同一個 URI 要用於多個名稱時，可以用 `XNamespace::get()` 取得 namespace，
+再用 `getName()` 建立可用於新增及查詢的 `XName`。
+
+```php
+use Light\Xml\Linq\{XElement, XNamespace};
+
+$people = XNamespace::get('urn:people');
+$root = new XElement($people->getName('users'),
+    new XElement($people->getName('user'), 'Ada'),
+);
+$user = $root->element($people->getName('user'));
+```
+
+`none()`、`xml()` 和 `xmlns()` 分別回傳空 namespace 和 XML 的兩個保留
+namespace。`get()` 以 URI 重用 namespace 物件，`getName()` 以本地名稱重用
+該 namespace 產生的 `XName`。
 
 ```php
 use Light\Xml\Linq\XName;
@@ -94,6 +111,17 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 建立、修改及儲存 XML 的完整範例請參考[套件說明](../README.md)。目前仍是 Microsoft LINQ to XML 的功能子集。
 
 
+可用以下方法查詢元素所在範圍內的 namespace 綁定。
+
+| 方法 | 回傳值 |
+| --- | --- |
+| `getDefaultNamespace()` | 預設 namespace，沒有時回傳 `XNamespace::none()` |
+| `getNamespaceOfPrefix($prefix)` | prefix 對應的 `XNamespace`，未綁定時回傳 `null` |
+| `getPrefixOfNamespace($namespace)` | 其中一個已綁定的非空 prefix，沒有時回傳 `null` |
+
+查詢會考慮繼承及覆蓋的綁定。查詢預設 namespace 時使用
+`getDefaultNamespace()`，因為 `getNamespaceOfPrefix('')` 會拋出 `InvalidArgumentException`。
+
 ## 元素導覽與順序
 
 | 方法 | 用途 |
@@ -108,6 +136,18 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 `isBefore($other)` 和 `isAfter($other)` 比較同一棵樹上的元素或註解。
 比較同一節點時兩者都回傳 `false`，傳入 `null` 時只有 `isAfter()` 回傳
 `true`。比較不同樹上的節點會拋出 `LogicException`。
+
+## Annotation
+
+```php
+$user->addAnnotation(new RuntimeException('缺少 email'));
+$firstIssue = $user->annotation(Throwable::class);
+$issues = $user->annotations(Throwable::class)->toArray();
+$user->removeAnnotations(Throwable::class);
+```
+
+Annotation 可附加任何物件，並按類別或介面查詢。同一節點經不同查詢取得時
+會共用 annotation。複製節點或輸出 XML 時，annotation 留在原節點上。
 
 ## 節點查詢
 
@@ -136,6 +176,18 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 內容可包含元素、註解、純量文字、巢狀 iterable 或 `null`。插入的節點會被複製，
 內容會先完整列舉及驗證。文件層級只接受元素及註解，且最多保留一個根元素。
 同層插入及替換要求目前元素已連接到父元素或文件。
+
+## 移除與替換 attributes 和子節點
+
+| 方法 | 用途 |
+| --- | --- |
+| `removeAll()` | 移除 attributes 與子節點 |
+| `removeAttributes()` | 只移除 attributes |
+| `replaceAttributes(...$content)` | 只替換 attributes，接受 `XAttribute`、巢狀 iterable 及 `null` |
+| `replaceNodes(...$content)` | 只替換子節點，可直接傳入 `nodes()` 的查詢結果 |
+
+替換方法會在修改元素前列舉並驗證內容。傳入空內容會清空對應項目。
+DOM 管理的 namespace 宣告與 `attributes()` 所列出的 attributes 分開處理。
 
 ## replaceAll：替換全部 attributes 與子節點
 

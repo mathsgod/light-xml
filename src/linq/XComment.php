@@ -22,7 +22,8 @@ final class XComment extends XNode
         } else {
             $text = $value instanceof self ? $value->value() : $value;
             self::validate($text);
-            $this->comment = (new DOMDocument())->createComment($text);
+            $document = new AnnotationDocument();
+            $this->comment = $document->createComment($text);
         }
         parent::__construct($this->comment);
     }

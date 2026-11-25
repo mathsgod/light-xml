@@ -19,7 +19,7 @@ final class XElement extends XNode
         if ($name instanceof DOMElement) {
             $this->elementNode = $name;
         } else {
-            $document = new \DOMDocument('1.0', 'UTF-8');
+            $document = new AnnotationDocument('1.0', 'UTF-8');
             if ($name instanceof self) {
                 $this->elementNode = $document->importNode($name->elementNode, true);
             } else {
@@ -65,6 +65,10 @@ final class XElement extends XNode
                 $this->elementNode->appendChild(self::copyChild($item->elementNode, $this->elementNode));
             } elseif ($item instanceof XComment) {
                 $this->elementNode->appendChild($item->copyTo($this->elementNode->ownerDocument));
+            } elseif ($item instanceof XContentNode && in_array($item->nodeType(), [
+                XML_TEXT_NODE, XML_CDATA_SECTION_NODE, XML_PI_NODE, XML_ENTITY_REF_NODE,
+            ], true)) {
+                $this->elementNode->appendChild(self::copyChild($item->node, $this->elementNode));
             } elseif ($item instanceof XAttribute) {
                 if (!$allowAttributes) {
                     throw new \InvalidArgumentException('Attributes cannot be inserted as child nodes.');
@@ -183,13 +187,63 @@ final class XElement extends XNode
             $nodes[] = $this->elementNode->ownerDocument->importNode($child, true);
         }
 
-        foreach ($this->attributes()->toArray() as $attribute) {
-            $attribute->remove();
-        }
-        $this->removeNodes();
+        $this->removeAll();
         $this->add($attributes);
         foreach ($nodes as $child) {
             $this->elementNode->appendChild($child);
+        }
+    }
+
+    public function removeAll(): void
+    {
+        $this->removeAttributes();
+        $this->removeNodes();
+    }
+
+    public function removeAttributes(): void
+    {
+        foreach ($this->attributes()->toArray() as $attribute) {
+            $attribute->remove();
+        }
+    }
+
+    public function replaceAttributes(mixed ...$content): void
+    {
+        $replacement = new self($this->name());
+        $replacement->addAttributes($content);
+        $attributes = $replacement->attributes()->toArray();
+
+        $this->removeAttributes();
+        $this->add($attributes);
+    }
+
+    private function addAttributes(iterable $content): void
+    {
+        foreach ($content as $item) {
+            if ($item === null) {
+                continue;
+            }
+            if ($item instanceof XAttribute) {
+                $name = $item->name();
+                if (($name->namespaceName === '' && $name->localName === 'xmlns')
+                    || $name->namespaceName === 'http://www.w3.org/2000/xmlns/') {
+                    throw new \InvalidArgumentException('Namespace declarations cannot be replaced as attributes.');
+                }
+                $this->add($item);
+            } elseif (is_iterable($item)) {
+                $this->addAttributes($item);
+            } else {
+                throw new \InvalidArgumentException('Attribute replacement requires XAttribute content.');
+            }
+        }
+    }
+
+    public function replaceNodes(mixed ...$content): void
+    {
+        $nodes = self::prepareInsertion($this->elementNode, $content);
+        $this->removeNodes();
+        foreach ($nodes as $node) {
+            $this->elementNode->appendChild($node);
         }
     }
 
@@ -290,6 +344,54 @@ final class XElement extends XNode
             $this->elementNode->localName ?? $this->elementNode->tagName,
             $this->elementNode->namespaceURI ?? '',
         );
+    }
+
+    public function getDefaultNamespace(): XNamespace
+    {
+        return XNamespace::get($this->elementNode->lookupNamespaceURI(null) ?? '');
+    }
+
+    public function getNamespaceOfPrefix(string $prefix): ?XNamespace
+    {
+        if ($prefix === '') {
+            throw new \InvalidArgumentException('Namespace prefix cannot be empty.');
+        }
+        return match ($prefix) {
+            'xml' => XNamespace::xml(),
+            'xmlns' => XNamespace::xmlns(),
+            default => ($uri = $this->elementNode->lookupNamespaceURI($prefix)) === null
+                ? null
+                : XNamespace::get($uri),
+        };
+    }
+
+    public function getPrefixOfNamespace(XNamespace $namespace): ?string
+    {
+        if ($namespace === XNamespace::xml()) {
+            return 'xml';
+        }
+        if ($namespace === XNamespace::xmlns()) {
+            return 'xmlns';
+        }
+
+        $uri = $namespace->namespaceName;
+        if ($uri === '') {
+            return null;
+        }
+        $element = $this->elementNode;
+        $prefix = $element->lookupPrefix($uri);
+        if ($prefix !== null && $prefix !== '' && $element->lookupNamespaceURI($prefix) === $uri) {
+            return $prefix;
+        }
+
+        // A default binding can coexist with a named prefix for the same URI.
+        $xpath = new \DOMXPath($element->ownerDocument);
+        foreach ($xpath->query('namespace::*', $element) as $binding) {
+            if ($binding->nodeName !== 'xmlns' && $binding->nodeValue === $uri) {
+                return $binding->localName;
+            }
+        }
+        return null;
     }
 
     public function value(): string

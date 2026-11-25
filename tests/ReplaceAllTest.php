@@ -11,6 +11,73 @@ use PHPUnit\Framework\TestCase;
 
 final class ReplaceAllTest extends TestCase
 {
+    public function testRemoveAttributesAndRemoveAllKeepTheElement(): void
+    {
+        $root = XElement::parse('<Parent><Root a="1" b="2"><Child/></Root></Parent>')->element('Root');
+        $child = $root->element('Child');
+        $root->removeAttributes();
+        self::assertSame('<Root><Child/></Root>', $root->toXml());
+        self::assertSame('Root', (string) $child->parent()->name());
+
+        $root->setAttributeValue('new', 'value');
+        $root->removeAll();
+        self::assertSame('<Root/>', $root->toXml());
+        self::assertSame('Parent', (string) $root->parent()->name());
+        self::assertNull($child->parent());
+    }
+
+    public function testReplaceAttributesSnapshotsInputAndKeepsChildren(): void
+    {
+        $root = XElement::parse('<Root old="yes"><Child/></Root>');
+        $old = $root->attribute('old');
+        $child = $root->element('Child');
+        $root->replaceAttributes([null, $root->attributes()], new XAttribute('{urn:test}id', 7));
+        $old->setValue('detached');
+
+        self::assertSame('yes', $root->attribute('old')->value());
+        self::assertSame('7', $root->attribute('{urn:test}id')->value());
+        $child->setValue('still attached');
+        self::assertSame('still attached', $root->element('Child')->value());
+        $root->replaceAttributes();
+        self::assertSame(0, $root->attributes()->count());
+        self::assertSame('still attached', $child->value());
+    }
+
+    public function testReplaceNodesCanReuseItsOwnMixedNodeQuery(): void
+    {
+        $root = XElement::parse('<Root keep="yes">text<![CDATA[a<b]]><?pi data?><!--note--><Child/></Root>');
+        $before = $root->toXml();
+        $oldChild = $root->element('Child');
+        $attribute = $root->attribute('keep');
+        $root->replaceNodes($root->nodes());
+
+        self::assertSame($before, $root->toXml());
+        self::assertNull($oldChild->parent());
+        $attribute->setValue('still attached');
+        $root->replaceNodes(null);
+        self::assertSame('<Root keep="still attached"/>', $root->toXml());
+    }
+
+    public function testInvalidSelectiveReplacementLeavesOriginalContentIntact(): void
+    {
+        $root = XElement::parse('<Root old="yes"><Child/></Root>');
+        $before = $root->toXml();
+        $attempts = [
+            static fn () => $root->replaceAttributes(new XAttribute('id', 1), new XAttribute('id', 2)),
+            static fn () => $root->replaceAttributes(new XAttribute('id', 1), new XElement('Invalid')),
+            static fn () => $root->replaceAttributes(new XAttribute('xmlns', 'urn:test')),
+            static fn () => $root->replaceNodes('valid', new XAttribute('id', 1)),
+        ];
+        foreach ($attempts as $attempt) {
+            try {
+                $attempt();
+                self::fail('Expected invalid replacement to be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($before, $root->toXml());
+            }
+        }
+    }
+
     public function testReplacesAttributesAndAllChildNodeKindsWithoutReplacingElement(): void
     {
         $document = XDocument::parse('<Parent><Root old="yes">old<!--comment--><![CDATA[data]]><?old test?><Old/></Root><Sibling/></Parent>');
