@@ -8,9 +8,30 @@ use DOMElement;
 use DOMNode;
 use Light\Linq\Enumerable;
 use Light\Linq\IEnumerable;
+use Light\Xml\XmlReader;
+use Light\Xml\XmlWriter;
 
 abstract class XContainer extends XNode
 {
+    abstract public function toXml(bool $formatOutput = false, SaveOptions $options = SaveOptions::None): string;
+
+    public function createReader(): XmlReader
+    {
+        return XmlReader::fromString($this->toXml());
+    }
+
+    public function createWriter(): XmlWriter
+    {
+        $writer = XmlWriter::forContainer(function (string $xml): void {
+            $this->add(XElement::parse($xml)->nodes());
+        });
+        // Keep the native writer inside an element so it escapes fragment text.
+        $writer->writeStartElement('fragment');
+        return $writer;
+    }
+
+    abstract public function writeTo(XmlWriter $writer): void;
+
     abstract public function add(mixed ...$content): void;
 
     abstract public function addFirst(mixed ...$content): void;
@@ -20,7 +41,7 @@ abstract class XContainer extends XNode
     public function removeNodes(): void
     {
         while ($this->node->firstChild !== null) {
-            $this->node->removeChild($this->node->firstChild);
+            self::removeChild($this->node, $this->node->firstChild);
         }
     }
 

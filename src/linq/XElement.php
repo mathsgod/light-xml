@@ -7,8 +7,12 @@ namespace Light\Xml\Linq;
 use DOMAttr;
 use DOMElement;
 use DOMNode;
+use Light\IO\TextReader;
+use Light\IO\TextWriter;
 use Light\Linq\Enumerable;
 use Light\Linq\IEnumerable;
+use Light\Xml\XmlReader;
+use Light\Xml\XmlWriter;
 
 final class XElement extends XContainer
 {
@@ -40,14 +44,15 @@ final class XElement extends XContainer
         return $document->importNode($this->elementNode, true);
     }
 
-    public static function parse(string $xml): self
+    public static function parse(string $xml, LoadOptions $options = LoadOptions::PreserveWhitespace): self
     {
-        return XDocument::parse($xml)->root();
+        return XDocument::parse($xml, $options)->root();
     }
 
-    public static function load(string $path): self
+    /** @param string|resource|TextReader|XmlReader $path */
+    public static function load(mixed $path, LoadOptions $options = LoadOptions::PreserveWhitespace): self
     {
-        return XDocument::load($path)->root();
+        return XDocument::load($path, $options)->root();
     }
 
     public function add(mixed ...$content): void
@@ -62,13 +67,13 @@ final class XElement extends XContainer
                 continue;
             }
             if ($item instanceof self) {
-                $this->elementNode->appendChild(self::copyChild($item->elementNode, $this->elementNode));
+                self::insertChild($this->elementNode, self::copyChild($item->elementNode, $this->elementNode));
             } elseif ($item instanceof XComment) {
-                $this->elementNode->appendChild($item->copyTo($this->elementNode->ownerDocument));
+                self::insertChild($this->elementNode, $item->copyTo($this->elementNode->ownerDocument));
             } elseif ($item instanceof XContentNode && in_array($item->nodeType(), [
                 XML_TEXT_NODE, XML_CDATA_SECTION_NODE, XML_PI_NODE, XML_ENTITY_REF_NODE,
             ], true)) {
-                $this->elementNode->appendChild(self::copyChild($item->node, $this->elementNode));
+                self::insertChild($this->elementNode, self::copyChild($item->node, $this->elementNode));
             } elseif ($item instanceof XAttribute) {
                 if (!$allowAttributes) {
                     throw new \InvalidArgumentException('Attributes cannot be inserted as child nodes.');
@@ -83,7 +88,7 @@ final class XElement extends XContainer
                     $this->addContent([$child], $allowAttributes);
                 }
             } elseif (is_scalar($item)) {
-                $this->elementNode->appendChild($this->elementNode->ownerDocument->createTextNode(
+                self::insertChild($this->elementNode, $this->elementNode->ownerDocument->createTextNode(
                     self::text($item),
                 ));
             } else {
@@ -98,7 +103,7 @@ final class XElement extends XContainer
         $nodes = self::prepareInsertion($parent, $content);
         $before = $parent->firstChild;
         foreach ($nodes as $node) {
-            $parent->insertBefore($node, $before);
+            self::insertChild($parent, $node, $before);
         }
     }
 
@@ -141,7 +146,7 @@ final class XElement extends XContainer
         $this->removeAll();
         $this->add($attributes);
         foreach ($nodes as $child) {
-            $this->elementNode->appendChild($child);
+            self::insertChild($this->elementNode, $child);
         }
     }
 
@@ -194,7 +199,7 @@ final class XElement extends XContainer
         $nodes = self::prepareInsertion($this->elementNode, $content);
         $this->removeNodes();
         foreach ($nodes as $node) {
-            $this->elementNode->appendChild($node);
+            self::insertChild($this->elementNode, $node);
         }
     }
 
@@ -211,18 +216,53 @@ final class XElement extends XContainer
             $this->attribute($name)?->remove();
             return;
         }
-        if ($name->namespaceName === '') {
-            $this->elementNode->setAttribute($name->localName, self::text($value));
+        $existing = $this->attribute($name);
+        if ($existing !== null) {
+            $existing->setValue($value);
             return;
         }
-        $prefix = $this->elementNode->lookupPrefix($name->namespaceName);
-        if ($prefix === null || $prefix === '') {
-            $index = 1;
-            do {
-                $prefix = 'ns'.$index++;
-            } while ($this->elementNode->lookupNamespaceURI($prefix) !== null);
+        if (($name->namespaceName === '' && $name->localName === 'xmlns')
+            || $name->namespaceName === 'http://www.w3.org/2000/xmlns/') {
+            $this->change(XObjectChange::Value, function () use ($name, $value): void {
+                if ($name->namespaceName === '') {
+                    $this->elementNode->setAttribute('xmlns', self::text($value));
+                } else {
+                    $this->elementNode->setAttributeNS($name->namespaceName, 'xmlns:'.$name->localName, self::text($value));
+                }
+            });
+            return;
         }
-        $this->elementNode->setAttributeNS($name->namespaceName, $prefix.':'.$name->localName, self::text($value));
+        $staging = new \DOMDocument();
+        if ($name->namespaceName === '') {
+            $attribute = $staging->createAttribute($name->localName);
+        } else {
+            $prefix = $this->elementNode->lookupPrefix($name->namespaceName);
+            if ($prefix === null || $prefix === '') {
+                $index = 1;
+                do {
+                    $prefix = 'ns'.$index++;
+                } while ($this->elementNode->lookupNamespaceURI($prefix) !== null);
+            }
+            $holder = $staging->appendChild($staging->createElement('holder'));
+            if ($name->namespaceName === 'http://www.w3.org/XML/1998/namespace') {
+                $owner = $this->elementNode->ownerDocument;
+                if ($owner->documentElement !== null) {
+                    $attribute = $owner->createAttributeNS($name->namespaceName, 'xml:'.$name->localName);
+                    $attribute->appendChild($owner->createTextNode(self::text($value)));
+                    XAttribute::attach($this->elementNode, $attribute);
+                    return;
+                }
+                $this->change(XObjectChange::Add, fn () => $this->elementNode->setAttributeNS(
+                    $name->namespaceName, 'xml:'.$name->localName, self::text($value),
+                ));
+                return;
+            }
+            $holder->setAttributeNS($name->namespaceName, $prefix.':'.$name->localName, '');
+            $attribute = $holder->getAttributeNodeNS($name->namespaceName, $name->localName);
+        }
+
+        $attribute->appendChild($staging->createTextNode(self::text($value)));
+        XAttribute::attach($this->elementNode, $this->elementNode->ownerDocument->importNode($attribute, true));
     }
 
     public function setElementValue(XName|string $name, string|int|float|bool|null $value): void
@@ -237,11 +277,23 @@ final class XElement extends XContainer
         }
     }
 
-    public function toXml(bool $formatOutput = false): string
+    public function writeTo(XmlWriter $writer): void
+    {
+        // Copying into a detached tree includes inherited namespace bindings.
+        $writer->writeSerializedNode((new self($this))->toXml());
+    }
+
+    public function createReader(): XmlReader
+    {
+        // Copying into a detached tree includes namespace bindings inherited by this element.
+        return XmlReader::fromString((new self($this))->toXml());
+    }
+
+    public function toXml(bool $formatOutput = false, SaveOptions $options = SaveOptions::None): string
     {
         $document = $this->elementNode->ownerDocument;
         $previous = $document->formatOutput;
-        $document->formatOutput = $formatOutput;
+        $document->formatOutput = $formatOutput && $options !== SaveOptions::DisableFormatting;
         try {
             $xml = $document->saveXML($this->elementNode);
             if ($xml === false) {
@@ -253,9 +305,14 @@ final class XElement extends XContainer
         }
     }
 
-    public function save(string $path, bool $formatOutput = false): void
+    /** @param string|resource|TextWriter|XmlWriter $path */
+    public function save(mixed $path, bool $formatOutput = false, SaveOptions $options = SaveOptions::None): void
     {
-        (new XDocument($this))->save($path, $formatOutput);
+        if ($path instanceof XmlWriter) {
+            $this->writeTo($path);
+            return;
+        }
+        (new XDocument($this))->save($path, $formatOutput, $options);
     }
 
     public function __toString(): string

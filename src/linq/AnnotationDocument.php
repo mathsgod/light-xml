@@ -11,7 +11,7 @@ use SplObjectStorage;
 /** @internal */
 final class AnnotationDocument extends DOMDocument
 {
-    /** @var SplObjectStorage<DOMNode, list<object>>|null */
+    /** @var SplObjectStorage<DOMNode, array<int|string, object|array>>|null */
     public ?SplObjectStorage $annotations = null;
 
     public ?XDocument $wrapper = null;

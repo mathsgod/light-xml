@@ -107,6 +107,20 @@ abstract class XNode extends XObject
         return $previous === null ? null : self::wrapNode($previous);
     }
 
+    protected static function insertChild(DOMNode $parent, DOMNode $node, ?DOMNode $before = null): void
+    {
+        self::wrapNode($node)->change(
+            XObjectChange::Add,
+            static fn () => $parent->insertBefore($node, $before),
+            $parent,
+        );
+    }
+
+    protected static function removeChild(DOMNode $parent, DOMNode $node): void
+    {
+        self::wrapNode($node)->change(XObjectChange::Remove, static fn () => $parent->removeChild($node));
+    }
+
     public function addBeforeSelf(mixed ...$content): void
     {
         $this->insertBeside($content);
@@ -138,10 +152,10 @@ abstract class XNode extends XObject
             self::validateDocumentInsertion($parent, $nodes, $before, $replace ? $target : null);
         }
         if ($replace) {
-            $parent->removeChild($target);
+            self::removeChild($parent, $target);
         }
         foreach ($nodes as $node) {
-            $parent->insertBefore($node, $before);
+            self::insertChild($parent, $node, $before);
         }
     }
 
@@ -176,7 +190,7 @@ abstract class XNode extends XObject
         if ($this->node->parentNode === null) {
             throw new \LogicException('The node has no parent.');
         }
-        $this->node->parentNode->removeChild($this->node);
+        self::removeChild($this->node->parentNode, $this->node);
     }
 
     /** @return IEnumerable<XElement> */

@@ -35,7 +35,7 @@ final class XComment extends XNode
     public function setValue(string $value): void
     {
         self::validate($value);
-        $this->comment->data = $value;
+        $this->change(XObjectChange::Value, fn () => $this->comment->data = $value);
     }
 
     public function remove(): void

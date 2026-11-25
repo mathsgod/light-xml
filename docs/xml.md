@@ -4,6 +4,76 @@
 
 XML API 以 DOM 為基礎，需要 `ext-dom`。先載入專案的 Composer autoloader。
 
+## 逐步讀取 XML
+
+`Light\Xml\XmlReader` 使用 PHP 的 `ext-xmlreader`。可用 `fromString($xml)` 讀取
+XML 字串，或用 `openUri($path)` 讀取檔案。PHP 8.4 及以上亦支援
+`fromStream($stream)`。文件和元素的 `createReader()` 會先序列化成完整的 XML 快照。
+
+```php
+$reader = $document->createReader();
+while ($reader->read()) {
+    if ($reader->nodeType() === \XMLReader::ELEMENT) {
+        echo $reader->localName(), PHP_EOL;
+    }
+}
+$reader->close();
+```
+
+## 逐步寫入 XML
+
+`Light\Xml\XmlWriter` 使用 PHP 的 `ext-xmlwriter`。可用 `openMemory()`
+在記憶體產生 XML，或用 `openUri($path)` 寫入檔案，再呼叫 `flush()`。
+
+```php
+use Light\Xml\XmlWriter;
+
+$writer = XmlWriter::openMemory();
+$writer->writeStartDocument();
+$writer->writeStartElement('report');
+$writer->writeAttributeString('id', '7');
+$writer->writeString('A & B');
+$writer->writeEndElement();
+$writer->writeEndDocument();
+$xml = $writer->outputMemory();
+```
+
+`writeTo($writer)` 將現有文件或元素寫入指定的 XML writer。`createWriter()`
+則建立一個會將內容加入目前文件或元素的 writer。呼叫 `close()` 才會提交內容。
+
+```php
+$target = new \Light\Xml\Linq\XDocument();
+$writer = $target->createWriter();
+$document->writeTo($writer);
+$writer->close();
+```
+
+## 儲存到 TextWriter
+
+`XDocument::save()` 和 `XElement::save()` 亦接受可寫的 PHP stream 和
+`Light\Xml\XmlWriter`。Stream 從目前位置寫入，呼叫端負責關閉。
+傳入 `XmlWriter` 時沿用 `writeTo()`，由呼叫端完成或關閉 writer。
+
+安裝選用套件 `mathsgod/light-io` 後，`XDocument::save()` 和
+`XElement::save()` 可接受 `Light\IO\TextWriter`。Writer 會收到與檔案輸出相同的
+XML 字串。
+
+```php
+$writer = new \Light\IO\StringWriter();
+$document->save($writer, formatOutput: true);
+$xml = $writer->toString();
+```
+
+## 保留空白與控制縮排
+
+`XDocument` 和 `XElement` 的 `parse()` 和 `load()` 預設使用
+`LoadOptions::PreserveWhitespace`，保留輸入的空白節點。
+可傳入 `options: LoadOptions::None` 讓 DOM 移除純縮排空白。
+
+`toXml()` 和 `save()` 可傳入 `options: SaveOptions::DisableFormatting`，
+即使同時傳入 `formatOutput: true`，序列化也不會加入縮排。
+當 `save()` 接收 `XmlWriter` 時，由 writer 控制其輸出設定。
+
 ## 解析與查詢
 
 ```php
@@ -25,6 +95,14 @@ $xml = $document->toXml(formatOutput: true);
 ```
 
 從檔案載入時使用 `XDocument::load('users.xml')`。空字串、不合法 XML 或不可讀檔案會拋出 `InvalidArgumentException`。
+
+`XDocument::load()` 和 `XElement::load()` 亦接受可讀的 PHP stream，或選用套件
+`mathsgod/light-io` 提供的 `Light\IO\TextReader`。兩者都由目前位置讀到結尾，
+再解析完整 XML，呼叫端負責管理輸入來源。
+
+傳入 `Light\Xml\XmlReader` 時，reader 可尚未開始讀取，或已定位在頂層節點。
+`load()` 會讀取剩餘的頂層內容至 EOF。原生 reader 的節點序列不包含 XML 宣告，
+因此這種載入方式不會保留原始宣告。
 
 | 方法 | 用途 |
 | --- | --- |
@@ -136,6 +214,27 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 `isBefore($other)` 和 `isAfter($other)` 比較同一棵樹上的節點，所有 XNode 子類別都可使用。
 比較同一節點時兩者都回傳 `false`，傳入 `null` 時只有 `isAfter()` 回傳
 `true`。比較不同樹上的節點會拋出 `LogicException`。
+
+## 變更事件
+
+```php
+use Light\Xml\Linq\{XObject, XObjectChange};
+
+$unsubscribe = $document->onChanged(
+    static function (XObject $sender, XObjectChange $change): void {
+        echo $change->name, PHP_EOL;
+    },
+);
+$document->root()->setAttributeValue('status', 'ready');
+$unsubscribe();
+```
+
+`onChanging()` 在修改前觸發，`onChanged()` 在成功修改後觸發。
+兩者會從受影響物件向祖先傳遞，並回傳取消訂閱的 callback。
+事件種類包括 `Add`、`Remove` 和 `Value`。XML 宣告的設定獨立於節點事件。
+批量操作通常按節點發出事件。將含 DTD 的完整文件寫入空白文件時，會發出一次文件層級的 `Add`。
+監聽器可以讀取 XML。若 `Changing` 監聽器拋出例外，會中止該次修改。
+若批量操作已完成部分修改，或 `Changed` 監聽器拋出例外，已完成的修改會保留。
 
 ## Annotation
 

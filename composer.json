@@ -8,12 +8,18 @@
         "ext-dom": "*",
         "mathsgod/light-linq": "^1.0"
     },
+    "suggest": {
+        "ext-xmlreader": "Enables the Light\\Xml\\XmlReader API.",
+        "ext-xmlwriter": "Enables the Light\\Xml\\XmlWriter API.",
+        "mathsgod/light-io": "Adds TextReader and TextWriter support for loading and saving XML."
+    },
     "require-dev": {
         "phpunit/phpunit": "^12.5"
     },
     "autoload": {
         "psr-4": {
-            "Light\\Xml\\Linq\\": "src/linq/"
+            "Light\\Xml\\Linq\\": "src/linq/",
+            "Light\\Xml\\": "src/"
         }
     },
     "scripts": {

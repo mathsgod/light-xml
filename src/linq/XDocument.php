@@ -5,9 +5,59 @@ declare(strict_types=1);
 namespace Light\Xml\Linq;
 
 use DOMDocument;
+use Light\IO\TextReader;
+use Light\IO\TextWriter;
+use Light\Xml\XmlReader;
+use Light\Xml\XmlWriter;
 
 final class XDocument extends XContainer
 {
+    public function createWriter(): XmlWriter
+    {
+        return XmlWriter::forContainer(function (string $xml): void {
+            if (trim($xml) === '') {
+                return;
+            }
+            try {
+                $source = self::parse($xml);
+            } catch (\InvalidArgumentException) {
+                // A batch of top-level comments or instructions can be appended without a root.
+                $fragment = XElement::parse('<fragment>'.$xml.'</fragment>');
+                $this->add($fragment->nodes()->where(
+                    static fn (XNode $node): bool => !$node instanceof XText || trim($node->value(), " \t\r\n") !== '',
+                ));
+                return;
+            }
+            if ($this->document->firstChild === null && $source->documentType() !== null) {
+                // Keep the parsed tree together so its entity references stay bound to its DTD.
+                $this->change(XObjectChange::Add, fn () => $this->setDocument($source->document));
+            } else {
+                $this->add($source->nodes());
+            }
+            if ($source->declaration() !== null) {
+                $this->setDeclaration($source->declaration());
+            }
+        });
+    }
+
+    public function writeTo(XmlWriter $writer): void
+    {
+        if ($this->declaration !== null) {
+            $writer->writeStartDocument(
+                $this->declaration->version(),
+                $this->declaration->encoding(),
+                $this->declaration->standalone(),
+            );
+        }
+        foreach ($this->document->childNodes as $child) {
+            $xml = $this->document->saveXML($child);
+            if ($xml === false) {
+                throw new \RuntimeException('Unable to serialize XML node.');
+            }
+            $writer->writeSerializedNode($xml);
+        }
+    }
+
     private AnnotationDocument $document;
     private ?XDeclaration $declaration = null;
     private bool $declarationOverridden = false;
@@ -114,7 +164,7 @@ final class XDocument extends XContainer
             for ($child = $this->document->firstChild; $child !== null; $child = $next) {
                 $next = $child->nextSibling;
                 if ($child !== $retainedType) {
-                    $this->document->removeChild($child);
+                    self::removeChild($this->document, $child);
                 }
             }
             $this->setDocument($document);
@@ -125,7 +175,7 @@ final class XDocument extends XContainer
                 $before = null;
                 continue;
             }
-            $document->insertBefore($node, $before);
+            self::insertChild($document, $node, $before);
         }
     }
 
@@ -165,7 +215,8 @@ final class XDocument extends XContainer
         return $document;
     }
 
-    public function save(string $path, bool $formatOutput = false): void
+    /** @param string|resource|TextWriter|XmlWriter $path */
+    public function save(mixed $path, bool $formatOutput = false, SaveOptions $options = SaveOptions::None): void
     {
         if ($path === '') {
             throw new \InvalidArgumentException('Output path cannot be empty.');
@@ -173,7 +224,34 @@ final class XDocument extends XContainer
         if ($this->root() === null) {
             throw new \LogicException('A document must have a root element before it can be saved.');
         }
-        if (@file_put_contents($path, $this->toXml($formatOutput)) === false) {
+        if ($path instanceof XmlWriter) {
+            $this->writeTo($path);
+            return;
+        }
+        if ($path instanceof TextWriter) {
+            $path->write($this->toXml($formatOutput, $options));
+            return;
+        }
+        if (is_resource($path) && get_resource_type($path) === 'stream') {
+            $mode = stream_get_meta_data($path)['mode'];
+            if (strpbrk($mode, 'waxc+') === false) {
+                throw new \InvalidArgumentException('Expected a writable XML stream.');
+            }
+            $xml = $this->toXml($formatOutput, $options);
+            $length = strlen($xml);
+            for ($offset = 0; $offset < $length; $offset += $written) {
+                $written = @fwrite($path, substr($xml, $offset, 8192));
+                if ($written === false || $written === 0) {
+                    throw new \RuntimeException('Unable to write the XML stream.');
+                }
+            }
+            return;
+        }
+        if (!is_string($path)) {
+            throw new \InvalidArgumentException('Expected an XML file path, writable stream, TextWriter, or XmlWriter.');
+        }
+        $xml = $this->toXml($formatOutput, $options);
+        if (@file_put_contents($path, $xml) === false) {
             throw new \RuntimeException("Unable to save XML file: {$path}");
         }
     }
@@ -183,12 +261,13 @@ final class XDocument extends XContainer
         return $this->toXml();
     }
 
-    public static function parse(string $xml): self
+    public static function parse(string $xml, LoadOptions $options = LoadOptions::PreserveWhitespace): self
     {
         if ($xml === '') {
             throw new \InvalidArgumentException('XML input cannot be empty.');
         }
         $document = self::newDocument();
+        $document->preserveWhiteSpace = $options === LoadOptions::PreserveWhitespace;
         self::withXmlErrors(
             static fn (): bool => $document->loadXML($xml, LIBXML_NONET),
             'Unable to parse XML.',
@@ -201,12 +280,34 @@ final class XDocument extends XContainer
         return $result;
     }
 
-    public static function load(string $path): self
+    /** @param string|resource|TextReader|XmlReader $path */
+    public static function load(mixed $path, LoadOptions $options = LoadOptions::PreserveWhitespace): self
     {
+        if ($path instanceof XmlReader) {
+            return self::parse($path->readDocumentXml(), $options);
+        }
+        if ($path instanceof TextReader) {
+            return self::parse($path->readToEnd(), $options);
+        }
+        if (is_resource($path) && get_resource_type($path) === 'stream') {
+            $mode = stream_get_meta_data($path)['mode'];
+            if (!str_starts_with($mode, 'r') && !str_contains($mode, '+')) {
+                throw new \InvalidArgumentException('Expected a readable XML stream.');
+            }
+            $xml = @stream_get_contents($path);
+            if ($xml === false || !feof($path)) {
+                throw new \RuntimeException('Unable to read the XML stream to EOF.');
+            }
+            return self::parse($xml, $options);
+        }
+        if (!is_string($path)) {
+            throw new \InvalidArgumentException('Expected an XML file path, readable stream, TextReader, or XmlReader.');
+        }
         if ($path === '' || !is_file($path) || !is_readable($path)) {
             throw new \InvalidArgumentException("XML file is not readable: {$path}");
         }
         $document = self::newDocument();
+        $document->preserveWhiteSpace = $options === LoadOptions::PreserveWhitespace;
         self::withXmlErrors(
             static fn (): bool => $document->load($path, LIBXML_NONET),
             "Unable to load XML file: {$path}",
@@ -230,12 +331,12 @@ final class XDocument extends XContainer
             : new XElement($this->document->documentElement);
     }
 
-    public function toXml(bool $formatOutput = false): string
+    public function toXml(bool $formatOutput = false, SaveOptions $options = SaveOptions::None): string
     {
         $document = $this->declarationOverridden ? $this->documentForSerialization() : $this->document;
         $omitDeclaration = $this->declarationOverridden && $this->declaration === null;
         $previous = $document->formatOutput;
-        $document->formatOutput = $formatOutput;
+        $document->formatOutput = $formatOutput && $options !== SaveOptions::DisableFormatting;
         try {
             $xml = $document->saveXML(null, $omitDeclaration ? LIBXML_NOXMLDECL : 0);
             if ($xml === false || ($xml === '' && !$omitDeclaration)) {

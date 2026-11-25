@@ -26,18 +26,22 @@ final class XAttribute extends XObject
                 $this->attribute = $holder->getAttributeNodeNS($name->namespaceName, $name->localName);
                 $holder->removeAttributeNode($this->attribute);
             }
-            $this->setValue($value);
         }
         parent::__construct($this->attribute);
+        if (!$name instanceof DOMAttr) {
+            $this->setValue($value);
+        }
     }
 
     public function setValue(string|int|float|bool $value): void
     {
-        while ($this->attribute->firstChild !== null) {
-            $this->attribute->removeChild($this->attribute->firstChild);
-        }
         $text = is_bool($value) ? ($value ? 'true' : 'false') : (string) $value;
-        $this->attribute->appendChild($this->attribute->ownerDocument->createTextNode($text));
+        $this->change(XObjectChange::Value, function () use ($text): void {
+            while ($this->attribute->firstChild !== null) {
+                $this->attribute->removeChild($this->attribute->firstChild);
+            }
+            $this->attribute->appendChild($this->attribute->ownerDocument->createTextNode($text));
+        });
     }
 
     public function remove(): void
@@ -46,7 +50,14 @@ final class XAttribute extends XObject
         if ($owner === null) {
             throw new \LogicException('The attribute has no parent.');
         }
-        $owner->removeAttributeNode($this->attribute);
+        $this->change(XObjectChange::Remove, fn () => $owner->removeAttributeNode($this->attribute));
+    }
+
+    /** @internal */
+    public static function attach(\DOMElement $owner, DOMAttr $attribute): void
+    {
+        $sender = new self($attribute);
+        $sender->change(XObjectChange::Add, static fn () => $owner->setAttributeNodeNS($attribute), $owner);
     }
 
     public function name(): XName

@@ -15,10 +15,10 @@ use WeakMap;
 
 abstract class XObject
 {
-    /** @var WeakMap<DOMDocument, SplObjectStorage<DOMNode, list<object>>>|null */
+    /** @var WeakMap<DOMDocument, SplObjectStorage<DOMNode, array<int|string, object|array>>>|null */
     private static ?WeakMap $externalAnnotations = null;
 
-    /** @var WeakMap<DOMNode, list<object>>|null */
+    /** @var WeakMap<DOMNode, array<int|string, object|array>>|null */
     private static ?WeakMap $detachedAnnotations = null;
 
     // Keep the owner wrapper alive so later queries see the same annotation store.
@@ -54,6 +54,79 @@ abstract class XObject
         return $node instanceof AnnotationDocument ? $node->wrapper : null;
     }
 
+    private static bool $dispatchingChange = false;
+
+    /** @return \Closure(): void Unsubscribe from this event. */
+    public function onChanging(callable $listener): \Closure
+    {
+        return $this->subscribe('changing', $listener);
+    }
+
+    /** @return \Closure(): void Unsubscribe from this event. */
+    public function onChanged(callable $listener): \Closure
+    {
+        return $this->subscribe('changed', $listener);
+    }
+
+    private function subscribe(string $phase, callable $listener): \Closure
+    {
+        $store = $this->annotationStore();
+        $entries = $store[$this->node] ?? [];
+        $callback = static fn (XObject $sender, XObjectChange $change) => $listener($sender, $change);
+        $id = spl_object_id($callback);
+        $entries[$phase][$id] = $callback;
+        $store[$this->node] = $entries;
+
+        return function () use ($phase, $id, $callback): void {
+            $store = $this->annotationStore();
+            $entries = $store[$this->node] ?? [];
+            if (($entries[$phase][$id] ?? null) === $callback) {
+                unset($entries[$phase][$id]);
+                if ($entries[$phase] === []) {
+                    unset($entries[$phase]);
+                }
+                $this->saveEntries($store, $entries);
+            }
+        };
+    }
+
+    protected function change(XObjectChange $change, callable $mutation, ?DOMNode $parent = null): void
+    {
+        if (self::$dispatchingChange) {
+            throw new \LogicException('XML cannot be modified from a change listener.');
+        }
+
+        $listeners = ['changing' => [], 'changed' => []];
+        for ($node = $this->node; $node !== null; $node = $parent ?? self::eventParent($node), $parent = null) {
+            $store = self::metadataStore($node, $this->annotationDocument);
+            $entries = $store[$node] ?? [];
+            foreach ($listeners as $phase => $callbacks) {
+                array_push($listeners[$phase], ...array_values($entries[$phase] ?? []));
+            }
+        }
+
+        $this->dispatch($listeners['changing'], $change);
+        $mutation();
+        $this->dispatch($listeners['changed'], $change);
+    }
+
+    private static function eventParent(DOMNode $node): ?DOMNode
+    {
+        return $node instanceof DOMAttr ? $node->ownerElement : $node->parentNode;
+    }
+
+    private function dispatch(array $listeners, XObjectChange $change): void
+    {
+        self::$dispatchingChange = true;
+        try {
+            foreach ($listeners as $listener) {
+                $listener($this, $change);
+            }
+        } finally {
+            self::$dispatchingChange = false;
+        }
+    }
+
     public function addAnnotation(object $annotation): void
     {
         $store = $this->annotationStore();
@@ -83,8 +156,8 @@ abstract class XObject
     public function annotations(string $type): IEnumerable
     {
         return Enumerable::defer(function () use ($type): iterable {
-            foreach ($this->annotationStore()[$this->node] ?? [] as $annotation) {
-                if ($annotation instanceof $type) {
+            foreach ($this->annotationStore()[$this->node] ?? [] as $key => $annotation) {
+                if (is_int($key) && $annotation instanceof $type) {
                     yield $annotation;
                 }
             }
@@ -95,10 +168,16 @@ abstract class XObject
     public function removeAnnotations(string $type): void
     {
         $store = $this->annotationStore();
-        $remaining = array_values(array_filter(
+        $remaining = array_filter(
             $store[$this->node] ?? [],
-            static fn (object $annotation): bool => !$annotation instanceof $type,
-        ));
+            static fn (mixed $entry, int|string $key): bool => is_string($key) || !$entry instanceof $type,
+            ARRAY_FILTER_USE_BOTH,
+        );
+        $this->saveEntries($store, $remaining);
+    }
+
+    private function saveEntries(SplObjectStorage|WeakMap $store, array $remaining): void
+    {
         if ($remaining === []) {
             unset($store[$this->node]);
         } else {
@@ -106,12 +185,15 @@ abstract class XObject
         }
     }
 
-    /** @return SplObjectStorage<DOMNode, list<object>>|WeakMap<DOMNode, list<object>> */
+    /** @return SplObjectStorage<DOMNode, array<int|string, object|array>>|WeakMap<DOMNode, array<int|string, object|array>> */
     private function annotationStore(): SplObjectStorage|WeakMap
     {
-        $document = $this->node instanceof DOMDocument
-            ? $this->node
-            : ($this->node->ownerDocument ?? $this->annotationDocument);
+        return self::metadataStore($this->node, $this->annotationDocument);
+    }
+
+    private static function metadataStore(DOMNode $node, ?DOMDocument $fallback): SplObjectStorage|WeakMap
+    {
+        $document = $node instanceof DOMDocument ? $node : ($node->ownerDocument ?? $fallback);
         if ($document instanceof AnnotationDocument) {
             return $document->annotations ??= new SplObjectStorage();
         }

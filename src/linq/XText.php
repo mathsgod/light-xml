@@ -29,7 +29,7 @@ class XText extends XContentNode
     public function setValue(string $value): void
     {
         self::validate($value);
-        $this->node->nodeValue = $value;
+        $this->change(XObjectChange::Value, fn () => $this->node->nodeValue = $value);
     }
 
     public function remove(): void

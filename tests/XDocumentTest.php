@@ -6,9 +6,87 @@ namespace Light\Xml\Tests;
 
 use Light\Xml\Linq\{XDeclaration, XDocument, XElement, XAttribute, XName};
 use PHPUnit\Framework\TestCase;
+use Light\Xml\Linq\{LoadOptions, SaveOptions};
 
 final class XDocumentTest extends TestCase
 {
+    public function testLoadOptionsPreserveWhitespaceByDefaultAndCanDiscardIndentation(): void
+    {
+        $xml = "<root>\n  <child>text</child>\n</root>";
+        self::assertSame(3, XDocument::parse($xml)->root()->nodes()->count());
+        self::assertSame(3, XElement::parse($xml, LoadOptions::PreserveWhitespace)->nodes()->count());
+        self::assertSame(1, XElement::parse($xml, LoadOptions::None)->nodes()->count());
+
+        $stream = fopen('php://temp', 'w+b');
+        try {
+            fwrite($stream, $xml);
+            rewind($stream);
+            self::assertSame(1, XDocument::load($stream, options: LoadOptions::None)->root()->nodes()->count());
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    public function testDisableFormattingOverridesRequestedIndentation(): void
+    {
+        $root = XElement::parse('<root><child/></root>');
+        $doc = new XDocument($root);
+        self::assertStringContainsString("\n  <child/>", $doc->toXml(formatOutput: true));
+        self::assertSame($doc->toXml(), $doc->toXml(formatOutput: true, options: SaveOptions::DisableFormatting));
+        self::assertSame($root->toXml(), $root->toXml(formatOutput: true, options: SaveOptions::DisableFormatting));
+
+        $stream = fopen('php://temp', 'w+b');
+        try {
+            $root->save($stream, formatOutput: true, options: SaveOptions::DisableFormatting);
+            rewind($stream);
+            self::assertSame($doc->toXml(), stream_get_contents($stream));
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    public function testSaveWritesAtTheStreamPositionAndLeavesTheStreamOpen(): void
+    {
+        $doc = new XDocument(new XDeclaration('1.0', 'UTF-16'), new XElement('root', str_repeat('é', 9000)));
+        $stream = fopen('php://temp', 'w+b');
+        try {
+            fwrite($stream, 'prefix');
+            $doc->save(path: $stream, formatOutput: true);
+            rewind($stream);
+            self::assertSame('prefix'.$doc->toXml(true), stream_get_contents($stream));
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    public function testLoadReadsStreamFromItsCurrentPositionAndLeavesItOpen(): void
+    {
+        $stream = fopen('php://temp', 'w+b');
+        try {
+            fwrite($stream, 'skip<?xml version="1.0"?><root>é</root>');
+            fseek($stream, 4);
+            $document = XDocument::load(path: $stream);
+            self::assertSame('é', $document->root()->value());
+            self::assertSame('1.0', $document->declaration()?->version());
+            self::assertTrue(feof($stream));
+            fseek($stream, 4);
+            self::assertSame('é', XElement::load($stream)->value());
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    public function testLoadRejectsWriteOnlyStream(): void
+    {
+        $stream = fopen('php://temp', 'wb');
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            XDocument::load($stream);
+        } finally {
+            fclose($stream);
+        }
+    }
+
     public function testDeclarationCanBeReplacedAndRemovedIndependentlyOfDocumentCopy(): void
     {
         $doc = XDocument::parse("<?xml version='1.0' encoding='UTF-8' standalone='no'?><!--note--><root/>");
