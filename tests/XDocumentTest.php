@@ -4,11 +4,57 @@ declare(strict_types=1);
 
 namespace Light\Xml\Tests;
 
-use Light\Xml\Linq\{XDocument, XElement, XAttribute, XName};
+use Light\Xml\Linq\{XDeclaration, XDocument, XElement, XAttribute, XName};
 use PHPUnit\Framework\TestCase;
 
 final class XDocumentTest extends TestCase
 {
+    public function testDeclarationCanBeReplacedAndRemovedIndependentlyOfDocumentCopy(): void
+    {
+        $doc = XDocument::parse("<?xml version='1.0' encoding='UTF-8' standalone='no'?><!--note--><root/>");
+        self::assertSame('1.0', $doc->declaration()?->version());
+        self::assertSame('UTF-8', $doc->declaration()?->encoding());
+        self::assertSame('no', $doc->declaration()?->standalone());
+
+        $copy = new XDocument($doc);
+        $copy->setDeclaration(new XDeclaration());
+        self::assertSame('<?xml version="1.0"?>', (string) $copy->declaration());
+        self::assertStringStartsWith("<?xml version=\"1.0\"?>\n", $copy->toXml());
+
+        $copy->setDeclaration(null);
+        self::assertNull($copy->declaration());
+        self::assertStringStartsWith("<!--note-->\n<root/>", $copy->toXml());
+        self::assertSame('no', $doc->declaration()?->standalone());
+        self::assertNull(XDocument::parse('<?xml-stylesheet href="style.xsl"?><root/>')->declaration());
+    }
+
+    public function testDeclarationControlsEncodingWhenSavingAndLoading(): void
+    {
+        $declaration = new XDeclaration('1.0', 'UTF-16', 'yes');
+        $doc = new XDocument($declaration, new XElement('root', 'é'));
+        $path = tempnam(sys_get_temp_dir(), 'light-xml-');
+        try {
+            $doc->save($path, true);
+            foreach ([XDocument::parse($doc->toXml()), XDocument::load($path)] as $reloaded) {
+                self::assertEquals($declaration, $reloaded->declaration());
+                self::assertSame('é', $reloaded->root()?->value());
+            }
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function testReplacingDeclarationPreservesDocumentTypeAndNodeOrder(): void
+    {
+        $doc = XDocument::parse('<!--before--><!DOCTYPE root [<!ENTITY text "value">]><root>&text;</root>');
+        $doc->setDeclaration(new XDeclaration());
+        $xml = $doc->toXml();
+
+        self::assertStringContainsString("<!--before-->\n<!DOCTYPE root", $xml);
+        self::assertStringContainsString('<root>&text;</root>', $xml);
+        self::assertSame('value', XDocument::parse($xml)->root()?->value());
+    }
+
     public function testFunctionalConstructionEscapesTextAndAttributes(): void
     {
         $doc = new XDocument(new XElement('users', [

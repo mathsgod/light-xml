@@ -11,27 +11,47 @@ use Light\Linq\IEnumerable;
 final class XDocument
 {
     private DOMDocument $document;
+    private ?XDeclaration $declaration = null;
+    private bool $declarationOverridden = false;
 
-    /** Create an empty document, a document with a root, or a deep copy. */
+    /** Create a document with an optional leading declaration and root, or a deep copy. */
     public function __construct(mixed ...$content)
     {
         $this->document = self::newDocument();
         if (count($content) === 1 && $content[0] instanceof self) {
             $this->document = clone $content[0]->document;
+            $this->declaration = $content[0]->declaration;
+            $this->declarationOverridden = $content[0]->declarationOverridden;
             return;
+        }
+        if (($content[0] ?? null) instanceof XDeclaration) {
+            $this->setDeclaration(array_shift($content));
         }
         $this->add(...$content);
     }
 
+    public function declaration(): ?XDeclaration
+    {
+        return $this->declaration;
+    }
+
+    public function setDeclaration(?XDeclaration $declaration): void
+    {
+        $this->declaration = $declaration;
+        $this->declarationOverridden = true;
+    }
+
     public function add(mixed ...$content): void
     {
-        $elements = [];
-        $collect = static function (mixed $item) use (&$collect, &$elements): void {
+        $nodes = [];
+        $rootCount = 0;
+        $collect = static function (mixed $item) use (&$collect, &$nodes, &$rootCount): void {
             if ($item === null) {
                 return;
             }
-            if ($item instanceof XElement) {
-                $elements[] = $item;
+            if ($item instanceof XElement || $item instanceof XComment) {
+                $nodes[] = $item;
+                $rootCount += (int) ($item instanceof XElement);
                 return;
             }
             if (is_iterable($item)) {
@@ -40,17 +60,23 @@ final class XDocument
                 }
                 return;
             }
-            throw new \InvalidArgumentException('Document content must be an XElement or iterable of elements.');
+            throw new \InvalidArgumentException('Document content must be an XElement, XComment, or iterable of document content.');
         };
         foreach ($content as $item) {
             $collect($item);
         }
-        if (count($elements) + ($this->root() === null ? 0 : 1) > 1) {
+        if ($rootCount + (int) ($this->document->documentElement !== null) > 1) {
             throw new \InvalidArgumentException('An XML document can have only one root element.');
         }
-        foreach ($elements as $element) {
-            $this->document->appendChild($element->copyTo($this->document));
+        foreach ($nodes as $node) {
+            $this->document->appendChild($node->copyTo($this->document));
         }
+    }
+
+    /** @return IEnumerable<XComment> */
+    public function comments(): IEnumerable
+    {
+        return XComment::childrenOf($this->document);
     }
 
     public function removeNodes(): void
@@ -108,6 +134,9 @@ final class XDocument
         );
         $result = new self();
         $result->document = $document;
+        if (self::startsWithDeclaration(self::normalizeDeclaration(substr($xml, 0, 32)))) {
+            $result->declaration = self::readDeclaration(substr($xml, 0, strpos($xml, '>') + 1));
+        }
         return $result;
     }
 
@@ -123,6 +152,7 @@ final class XDocument
         );
         $result = new self();
         $result->document = $document;
+        $result->declaration = self::readFileDeclaration($path);
         return $result;
     }
 
@@ -152,17 +182,102 @@ final class XDocument
 
     public function toXml(bool $formatOutput = false): string
     {
-        $previous = $this->document->formatOutput;
-        $this->document->formatOutput = $formatOutput;
+        $document = $this->declarationOverridden ? $this->documentForSerialization() : $this->document;
+        $omitDeclaration = $this->declarationOverridden && $this->declaration === null;
+        $previous = $document->formatOutput;
+        $document->formatOutput = $formatOutput;
         try {
-            $xml = $this->document->saveXML();
-            if ($xml === false) {
+            $xml = $document->saveXML(null, $omitDeclaration ? LIBXML_NOXMLDECL : 0);
+            if ($xml === false || ($xml === '' && !$omitDeclaration)) {
                 throw new \RuntimeException('Unable to serialize XML document.');
             }
             return $xml;
         } finally {
-            $this->document->formatOutput = $previous;
+            $document->formatOutput = $previous;
         }
+    }
+
+    private function documentForSerialization(): DOMDocument
+    {
+        $document = new DOMDocument();
+        if ($this->document->doctype !== null) {
+            // PHP 8.3 cannot import a document type with its internal subset.
+            $doctype = $this->document->saveXML($this->document->doctype);
+            self::withXmlErrors(
+                static fn (): bool => $document->loadXML($doctype.'<placeholder/>', LIBXML_NONET),
+                'Unable copy XML document type.',
+            );
+            $document->removeChild($document->documentElement);
+        }
+        $document->xmlVersion = $this->declaration?->version() ?? '1.0';
+        $encoding = $this->declaration?->encoding();
+        if ($encoding !== null) {
+            $document->encoding = $encoding;
+        }
+        $standalone = $this->declaration?->standalone();
+        if ($standalone !== null) {
+            $document->xmlStandalone = $standalone === 'yes';
+        }
+        $before = $document->doctype;
+        foreach ($this->document->childNodes as $child) {
+            if ($child instanceof \DOMDocumentType) {
+                $before = null;
+                continue;
+            }
+            $document->insertBefore($document->importNode($child, true), $before);
+        }
+        return $document;
+    }
+
+    private static function readFileDeclaration(string $path): ?XDeclaration
+    {
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new \InvalidArgumentException("XML file is not readable: {$path}");
+        }
+        try {
+            $prefix = fread($stream, 32);
+            if ($prefix === false || !self::startsWithDeclaration(self::normalizeDeclaration($prefix))) {
+                return null;
+            }
+
+            while (!str_contains($prefix, '>')) {
+                $chunk = fread($stream, 4096);
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                $prefix .= $chunk;
+            }
+            return self::readDeclaration($prefix);
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    private static function normalizeDeclaration(string $prefix): string
+    {
+        // XML declaration fields are ASCII even in UTF-16 and UTF-32 input.
+        return preg_replace('/\A(?:\xEF\xBB\xBF|\xFE\xFF|\xFF\xFE)/', '', str_replace("\0", '', $prefix));
+    }
+
+    private static function startsWithDeclaration(string $prefix): bool
+    {
+        return preg_match('/\A<\?xml[ \t\r\n]/', $prefix) === 1;
+    }
+
+    private static function readDeclaration(string $prefix): ?XDeclaration
+    {
+        $prefix = self::normalizeDeclaration($prefix);
+        if (!self::startsWithDeclaration($prefix)) {
+            return null;
+        }
+        $header = strstr($prefix, '?>', true);
+        if ($header === false) {
+            return null;
+        }
+        preg_match_all('/(version|encoding|standalone)[ \t\r\n]*=[ \t\r\n]*(["\x27])(.*?)\2/s', $header, $matches, PREG_SET_ORDER);
+        $values = array_column($matches, 3, 1);
+        return new XDeclaration($values['version'], $values['encoding'] ?? null, $values['standalone'] ?? null);
     }
 
     private static function newDocument(): DOMDocument

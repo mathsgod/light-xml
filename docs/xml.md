@@ -41,6 +41,42 @@ $xml = $document->toXml(formatOutput: true);
 
 序列方法回傳 lazy `IEnumerable`，可接 `where()`、`select()`、`groupBy()` 等。XML 文件本身在 parse／load 時已載入 DOM，並非串流 XML parser。
 
+## XML 宣告
+
+```php
+use Light\Xml\Linq\{XDeclaration, XDocument, XElement};
+
+$document = new XDocument(
+    new XDeclaration('1.0', 'UTF-8', 'yes'),
+    new XElement('users'),
+);
+$encoding = $document->declaration()?->encoding(); // 'UTF-8'
+$document->setDeclaration(null); // 輸出時省略 XML 宣告
+```
+
+`parse()` 和 `load()` 會讀取原有宣告。沒有宣告時，`declaration()` 回傳
+`null`。省略的 `encoding` 或 `standalone` 欄位也會回傳 `null`。
+明確設定宣告後，`toXml()` 和 `save()` 會按宣告的編碼輸出。
+未呼叫 `setDeclaration()` 且未傳入宣告的文件沿用原有 DOM 序列化行為。
+
+## XML 註解
+
+```php
+use Light\Xml\Linq\{XComment, XDocument, XElement};
+
+$document = new XDocument(
+    new XComment('匯出資料'),
+    new XElement('users', new XComment('待更新')),
+    new XComment('匯出完成'),
+);
+$document->root()->comments()->single()->setValue('已更新');
+```
+
+`XDocument` 和 `XElement` 的建構式與 `add()` 接受 `XComment`，
+`XElement::replaceAll()` 亦可加入註解。`comments()` 按文件順序列出直接子註解，
+包括從 XML 讀取的註解。可用 `value()` 讀取內容、`setValue()` 修改，
+或用 `remove()` 從文件移除。加入註解時會複製節點，透過 `comments()` 取出的註解則可直接編輯原樹。
+
 ## Namespace 與 XName
 
 ```php

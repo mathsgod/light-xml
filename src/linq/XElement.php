@@ -63,6 +63,8 @@ final class XElement extends XNode
                     $copy->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns', '');
                 }
                 $this->elementNode->appendChild($copy);
+            } elseif ($item instanceof XComment) {
+                $this->elementNode->appendChild($item->copyTo($this->elementNode->ownerDocument));
             } elseif ($item instanceof XAttribute) {
                 $name = $item->name();
                 if ($this->attribute($name) !== null) {
@@ -218,6 +220,12 @@ final class XElement extends XNode
             }
         }
         return null;
+    }
+
+    /** @return IEnumerable<XComment> */
+    public function comments(): IEnumerable
+    {
+        return XComment::childrenOf($this->elementNode);
     }
 
     /** @return IEnumerable<XElement> */
