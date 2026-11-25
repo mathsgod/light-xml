@@ -13,6 +13,12 @@ composer test
 
 The namespace is `Light\Xml\Linq`, mapped to `src/linq/` through PSR-4. Methods use PHP camelCase naming.
 
+## Documentation
+
+- [XML guide](docs/xml.md)
+- [XDocument](docs/XDocument.md)
+- [XElement](docs/XElement.md)
+
 ## Create, edit, and save a document
 
 ```php
@@ -136,13 +142,11 @@ Use `XName` or `{namespace-uri}localName` for names, rather than a prefix in pla
 
 ## I/O and errors
 
-Both `XDocument` and `XElement` provide `parse()`, `load()`, `toXml()`, and `save()`. Currently, load/save accept file paths only. `toXml()` and string conversion do not write files. Document serialization includes an XML declaration; an element's `toXml()` outputs only that element.
-
-Malformed XML, unreadable input files, and invalid content raise exceptions. An empty document can exist and be serialized, but it must have a root element before `save()` can be called. Output failures throw `RuntimeException`. Formatting does not remove whitespace text nodes preserved during parsing.
+Both \`XDocument\` and \`XElement\` support paths and PHP streams. The optional \`light-io\` package adds text reader and writer support. PHP's \`ext-xmlreader\` and \`ext-xmlwriter\` enable the XML reader and writer APIs. See the [XDocument I/O reference](docs/XDocument.md#載入-xml) for accepted inputs and options.
 
 ## Differences from .NET
 
-The core creation, copying, loading, querying, editing, and saving workflows are supported. Features not yet implemented include the full node construction API, such as `XDeclaration` and `XComment`, events, annotations, async operations, stream readers/writers, XSD validation, complete navigation, and replacement methods other than `XElement::replaceAll()`. Parsed document-level comments and processing instructions are preserved during serialization, but dedicated wrappers are not yet available.
+The package covers synchronous XML construction, navigation, editing and I/O. Async I/O and XSD validation are outside the current API. The per-class guides describe the supported options and behaviors.
 
 ## Migrating from light-linq XML
 

@@ -4,6 +4,13 @@
 
 XML API 以 DOM 為基礎，需要 `ext-dom`。先載入專案的 Composer autoloader。
 
+## 類別文件
+
+| 類別 | 內容 |
+| --- | --- |
+| [XDocument](XDocument.md) | 文件結構、宣告、DOCTYPE、讀寫及選項 |
+| [XElement](XElement.md) | 元素建構、查詢、namespace、編輯及輸出 |
+
 ## 逐步讀取 XML
 
 `Light\Xml\XmlReader` 使用 PHP 的 `ext-xmlreader`。可用 `fromString($xml)` 讀取
