@@ -10,7 +10,7 @@ use DOMNode;
 use Light\Linq\Enumerable;
 use Light\Linq\IEnumerable;
 
-final class XElement extends XNode
+final class XElement extends XContainer
 {
     private readonly DOMElement $elementNode;
 
@@ -286,13 +286,6 @@ final class XElement extends XNode
         }
     }
 
-    public function removeNodes(): void
-    {
-        while ($this->elementNode->firstChild !== null) {
-            $this->elementNode->removeChild($this->elementNode->firstChild);
-        }
-    }
-
     public function remove(): void
     {
         if ($this->elementNode->parentNode === null) {
@@ -399,56 +392,14 @@ final class XElement extends XNode
         return $this->elementNode->textContent;
     }
 
-    public function element(XName|string $name): ?self
-    {
-        $name = XName::from($name);
-        foreach ($this->elementNode->childNodes as $child) {
-            if ($child instanceof DOMElement && $name->matches($child)) {
-                return new self($child);
-            }
-        }
-        return null;
-    }
-
-    /** @return IEnumerable<XComment> */
-    public function comments(): IEnumerable
-    {
-        return XComment::childrenOf($this->elementNode);
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function elements(XName|string|null $name = null): IEnumerable
-    {
-        $element = $this->elementNode;
-        $name = $name === null ? null : XName::from($name);
-        return Enumerable::defer(static function () use ($element, $name): iterable {
-            foreach ($element->childNodes as $child) {
-                if ($child instanceof DOMElement && ($name === null || $name->matches($child))) {
-                    yield new XElement($child);
-                }
-            }
-        });
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function descendants(XName|string|null $name = null): IEnumerable
-    {
-        return $this->queryDescendants($name, includeSelf: false);
-    }
-
     /** @return IEnumerable<XElement> */
     public function descendantsAndSelf(XName|string|null $name = null): IEnumerable
     {
-        return $this->queryDescendants($name, includeSelf: true);
-    }
 
-    /** @return IEnumerable<XElement> */
-    private function queryDescendants(XName|string|null $name, bool $includeSelf): IEnumerable
-    {
         $element = $this->elementNode;
         $name = $name === null ? null : XName::from($name);
-        return Enumerable::defer(static function () use ($element, $name, $includeSelf): iterable {
-            if ($includeSelf && ($name === null || $name->matches($element))) {
+        return Enumerable::defer(static function () use ($element, $name): iterable {
+            if ($name === null || $name->matches($element)) {
                 yield new self($element);
             }
             yield from self::descendantElements($element, $name);
@@ -508,21 +459,12 @@ final class XElement extends XNode
     }
 
     /** @return IEnumerable<XNode> */
-    public function nodes(): IEnumerable
-    {
-        return $this->queryNodes(descend: false, includeSelf: false);
-    }
-
-    /** @return IEnumerable<XNode> */
-    public function descendantNodes(): IEnumerable
-    {
-        return $this->queryNodes(descend: true, includeSelf: false);
-    }
-
-    /** @return IEnumerable<XNode> */
     public function descendantNodesAndSelf(): IEnumerable
     {
-        return $this->queryNodes(descend: true, includeSelf: true);
+        return Enumerable::defer(function (): iterable {
+            yield new self($this->elementNode);
+            yield from self::childNodes($this->elementNode, true);
+        });
     }
 
     /** @return IEnumerable<XNode> */
@@ -535,29 +477,6 @@ final class XElement extends XNode
     public function nodesAfterSelf(): IEnumerable
     {
         return $this->siblingNodes(before: false);
-    }
-
-    /** @return IEnumerable<XNode> */
-    private function queryNodes(bool $descend, bool $includeSelf): IEnumerable
-    {
-        $element = $this->elementNode;
-        return Enumerable::defer(static function () use ($element, $descend, $includeSelf): iterable {
-            if ($includeSelf) {
-                yield new self($element);
-            }
-            yield from self::childNodes($element, $descend);
-        });
-    }
-
-    /** @return \Generator<int, XNode> */
-    private static function childNodes(DOMElement $element, bool $descend): \Generator
-    {
-        foreach ($element->childNodes as $child) {
-            yield self::wrapNode($child);
-            if ($descend && $child instanceof DOMElement) {
-                yield from self::childNodes($child, true);
-            }
-        }
     }
 
     /** @return IEnumerable<XNode> */
@@ -578,17 +497,6 @@ final class XElement extends XNode
         for ($node = $start; $node !== null && $node !== $element; $node = $node->nextSibling) {
             yield $node;
         }
-    }
-
-    private static function wrapNode(DOMNode $node): XNode
-    {
-        return match (true) {
-            $node instanceof DOMElement => new self($node),
-            $node instanceof \DOMComment => new XComment($node),
-            $node instanceof \DOMCdataSection => new XCData($node),
-            $node instanceof \DOMText => new XText($node),
-            default => new XContentNode($node),
-        };
     }
 
     public function isBefore(self|XComment|XContentNode|null $other): bool
@@ -667,19 +575,5 @@ final class XElement extends XNode
                 }
             }
         });
-    }
-
-    /** @return \Generator<int, XElement> */
-    private static function descendantElements(DOMNode $parent, ?XName $name): \Generator
-    {
-        foreach ($parent->childNodes as $child) {
-            if (!$child instanceof DOMElement) {
-                continue;
-            }
-            if ($name === null || $name->matches($child)) {
-                yield new self($child);
-            }
-            yield from self::descendantElements($child, $name);
-        }
     }
 }

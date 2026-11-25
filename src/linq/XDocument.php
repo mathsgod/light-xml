@@ -5,29 +5,35 @@ declare(strict_types=1);
 namespace Light\Xml\Linq;
 
 use DOMDocument;
-use Light\Linq\Enumerable;
-use Light\Linq\IEnumerable;
 
-final class XDocument
+final class XDocument extends XContainer
 {
-    private DOMDocument $document;
+    private AnnotationDocument $document;
     private ?XDeclaration $declaration = null;
     private bool $declarationOverridden = false;
 
     /** Create a document with an optional leading declaration and root, or a deep copy. */
     public function __construct(mixed ...$content)
     {
-        $this->document = self::newDocument();
         if (count($content) === 1 && $content[0] instanceof self) {
             $this->document = clone $content[0]->document;
+            parent::__construct($this->document);
             $this->declaration = $content[0]->declaration;
             $this->declarationOverridden = $content[0]->declarationOverridden;
             return;
         }
+        $this->document = self::newDocument();
+        parent::__construct($this->document);
         if (($content[0] ?? null) instanceof XDeclaration) {
             $this->setDeclaration(array_shift($content));
         }
         $this->add(...$content);
+    }
+
+    private function setDocument(AnnotationDocument $document): void
+    {
+        $this->replaceDocumentNode($document);
+        $this->document = $document;
     }
 
     public function declaration(): ?XDeclaration
@@ -43,65 +49,116 @@ final class XDocument
 
     public function add(mixed ...$content): void
     {
-        $nodes = [];
-        $rootCount = 0;
-        $collect = static function (mixed $item) use (&$collect, &$nodes, &$rootCount): void {
-            if ($item === null) {
-                return;
-            }
-            if ($item instanceof XElement || $item instanceof XComment) {
-                $nodes[] = $item;
-                $rootCount += (int) ($item instanceof XElement);
-                return;
-            }
-            if (is_iterable($item)) {
-                foreach ($item as $child) {
-                    $collect($child);
-                }
-                return;
-            }
-            throw new \InvalidArgumentException('Document content must be an XElement, XComment, or iterable of document content.');
-        };
-        foreach ($content as $item) {
-            $collect($item);
-        }
-        if ($rootCount + (int) ($this->document->documentElement !== null) > 1) {
-            throw new \InvalidArgumentException('An XML document can have only one root element.');
-        }
+        $this->insertNodes($content);
+    }
+
+    public function addFirst(mixed ...$content): void
+    {
+        $this->insertNodes($content, first: true);
+    }
+
+    public function replaceNodes(mixed ...$content): void
+    {
+        $this->insertNodes($content, replace: true);
+    }
+
+    private function insertNodes(array $content, bool $first = false, bool $replace = false): void
+    {
+        $nodes = iterator_to_array(self::flattenContent($content), false);
+        $document = $this->document;
+        $existingType = $document->doctype;
+        $existingRoot = !$replace && $document->documentElement !== null;
+        $hasRoot = !$first && $existingRoot;
+        $hasType = !$replace && $existingType !== null;
+        $doctype = null;
         foreach ($nodes as $node) {
-            $this->document->appendChild($node->copyTo($this->document));
-        }
-    }
-
-    /** @return IEnumerable<XComment> */
-    public function comments(): IEnumerable
-    {
-        return XComment::childrenOf($this->document);
-    }
-
-    public function removeNodes(): void
-    {
-        while ($this->document->firstChild !== null) {
-            $this->document->removeChild($this->document->firstChild);
-        }
-    }
-
-    public function element(XName|string $name): ?XElement
-    {
-        $root = $this->root();
-        return $root !== null && XName::from($name)->matches($this->document->documentElement)
-            ? $root : null;
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function elements(XName|string|null $name = null): IEnumerable
-    {
-        return Enumerable::defer(function () use ($name): iterable {
-            $root = $name === null ? $this->root() : $this->element($name);
-            if ($root !== null) {
-                yield $root;
+            if ($node instanceof XElement) {
+                if ($hasRoot || $existingRoot) {
+                    throw new \InvalidArgumentException('An XML document can have only one root element.');
+                }
+                if ($first && !$replace && $existingType !== null) {
+                    throw new \InvalidArgumentException('The root element must follow the document type.');
+                }
+                $hasRoot = true;
+            } elseif ($node instanceof XContentNode && $node->nodeType() === XML_DOCUMENT_TYPE_NODE) {
+                if ($hasRoot || $hasType) {
+                    throw new \InvalidArgumentException('A document type must occur once, before the root element.');
+                }
+                $hasType = true;
+                $doctype = $node;
             }
-        });
+        }
+
+        if ($doctype !== null && ($existingType === null || !$doctype->wraps($existingType))) {
+            if (!$replace && $document->firstChild !== null) {
+                // Rebuild only when importing a type, which legacy DOM cannot copy directly.
+                $existing = $this->nodes()->toArray();
+                $nodes = $first ? [...$nodes, ...$existing] : [...$existing, ...$nodes];
+            }
+            $document = $this->documentWithType($doctype);
+            $replace = true;
+        }
+
+        $prepared = [];
+        foreach ($nodes as $node) {
+            $prepared[] = $node === $doctype ? $document->doctype : $node->copyTo($document);
+        }
+
+        $before = $first && !$replace ? $document->firstChild : null;
+        $retainedType = $doctype === null ? null : $document->doctype;
+        if ($replace) {
+            for ($child = $this->document->firstChild; $child !== null; $child = $next) {
+                $next = $child->nextSibling;
+                if ($child !== $retainedType) {
+                    $this->document->removeChild($child);
+                }
+            }
+            $this->setDocument($document);
+            $before = $retainedType;
+        }
+        foreach ($prepared as $node) {
+            if ($node === $retainedType) {
+                $before = null;
+                continue;
+            }
+            $document->insertBefore($node, $before);
+        }
+    }
+
+    /** @return \Generator<int, XElement|XComment|XContentNode> */
+    private static function flattenContent(iterable $content): \Generator
+    {
+        foreach ($content as $item) {
+            if ($item === null) {
+                continue;
+            }
+            if ($item instanceof XElement || $item instanceof XComment
+                || ($item instanceof XContentNode && in_array($item->nodeType(), [XML_PI_NODE, XML_DOCUMENT_TYPE_NODE], true))) {
+                yield $item;
+            } elseif (is_iterable($item)) {
+                yield from self::flattenContent($item);
+            } else {
+                throw new \InvalidArgumentException('Document content must be an element, comment, processing instruction or document type.');
+            }
+        }
+    }
+
+    private function documentWithType(XContentNode $doctype): AnnotationDocument
+    {
+        $document = self::newDocument();
+        self::withXmlErrors(
+            static fn (): bool => $document->loadXML($doctype->toXml().'<placeholder/>', LIBXML_NONET),
+            'Unable to copy XML document type.',
+        );
+        $document->removeChild($document->documentElement);
+        $document->xmlVersion = $this->document->xmlVersion;
+        if ($this->document->encoding !== null) {
+            $document->encoding = $this->document->encoding;
+        }
+        if ($this->declaration?->standalone() !== null) {
+            $document->xmlStandalone = $this->declaration->standalone() === 'yes';
+        }
+        return $document;
     }
 
     public function save(string $path, bool $formatOutput = false): void
@@ -133,7 +190,7 @@ final class XDocument
             'Unable to parse XML.',
         );
         $result = new self();
-        $result->document = $document;
+        $result->setDocument($document);
         if (self::startsWithDeclaration(self::normalizeDeclaration(substr($xml, 0, 32)))) {
             $result->declaration = self::readDeclaration(substr($xml, 0, strpos($xml, '>') + 1));
         }
@@ -151,7 +208,7 @@ final class XDocument
             "Unable to load XML file: {$path}",
         );
         $result = new self();
-        $result->document = $document;
+        $result->setDocument($document);
         $result->declaration = self::readFileDeclaration($path);
         return $result;
     }
@@ -161,23 +218,6 @@ final class XDocument
         return $this->document->documentElement === null
             ? null
             : new XElement($this->document->documentElement);
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function descendants(XName|string|null $name = null): IEnumerable
-    {
-        $document = $this->document;
-        $name = $name === null ? null : XName::from($name);
-        return Enumerable::defer(static function () use ($document, $name): iterable {
-            $root = $document->documentElement;
-            if ($root === null) {
-                return;
-            }
-            if ($name === null || $name->matches($root)) {
-                yield new XElement($root);
-            }
-            yield from (new XElement($root))->descendants($name);
-        });
     }
 
     public function toXml(bool $formatOutput = false): string
@@ -280,7 +320,7 @@ final class XDocument
         return new XDeclaration($values['version'], $values['encoding'] ?? null, $values['standalone'] ?? null);
     }
 
-    private static function newDocument(): DOMDocument
+    private static function newDocument(): AnnotationDocument
     {
         $document = new AnnotationDocument('1.0', 'UTF-8');
         $document->resolveExternals = false;

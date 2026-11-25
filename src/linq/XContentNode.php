@@ -15,6 +15,18 @@ class XContentNode extends XNode
         parent::__construct($node);
     }
 
+    /** @internal */
+    public function copyTo(\DOMDocument $document): DOMNode
+    {
+        return $document->importNode($this->node, true);
+    }
+
+    /** @internal */
+    public function wraps(DOMNode $node): bool
+    {
+        return $this->node === $node;
+    }
+
     public function nodeType(): int
     {
         return $this->node->nodeType;

@@ -149,6 +149,13 @@ $user->removeAnnotations(Throwable::class);
 Annotation 可附加任何物件，並按類別或介面查詢。同一節點經不同查詢取得時
 會共用 annotation。複製節點或輸出 XML 時，annotation 留在原節點上。
 
+## XContainer
+
+`XDocument` 和 `XElement` 都繼承自 `XContainer`，而 `XContainer` 繼承自
+`XNode`。可用 `XContainer` 作為型別，讓同一段程式查詢或修改文件與元素。
+`firstNode()` 和 `lastNode()` 回傳首尾子節點，容器沒有子節點時回傳 `null`。
+文件與元素各自驗證可加入的內容，兩者都可使用 `XNode` 的 annotation 方法。
+
 ## 節點查詢
 
 | 方法 | 用途 |
@@ -163,6 +170,12 @@ Annotation 可附加任何物件，並按類別或介面查詢。同一節點經
 `XElement`、`XComment`、`XText` 和 `XCData` 回傳。處理指令等其他節點以
 `XContentNode` 回傳，可用 `nodeType()`、`nodeName()`、`value()` 和 `toXml()` 讀取。
 屬性可透過 `attributes()` 查詢。
+
+`XDocument::nodes()` 會按文件順序列出頂層節點，包括根元素、註解、處理指令及
+文件類型。`XDocument::descendantNodes()` 亦會列出根元素內的後代節點。
+`addFirst()` 在現有節點前插入內容，`replaceNodes()` 會先讀取並驗證輸入，
+因此可以直接傳入同一文件的 `nodes()`。XML 宣告仍可透過 `declaration()` 讀取。
+從另一份文件插入文件類型時，DOM 文件需要重建，原有節點 wrapper 會指向已分離的節點。
 
 ### 文字與 CDATA
 

@@ -22,9 +22,35 @@ abstract class XNode
     // Keep the owner wrapper alive so later queries see the same annotation store.
     private readonly ?DOMDocument $annotationDocument;
 
-    protected function __construct(protected readonly DOMNode $node)
+    protected function __construct(protected DOMNode $node)
     {
         $this->annotationDocument = $node->ownerDocument;
+    }
+
+    /** Keep document-level metadata when the container must rebuild its DOM. */
+    protected function replaceDocumentNode(AnnotationDocument $document): void
+    {
+        $previous = $this->node;
+        if ($previous === $document) {
+            return;
+        }
+        if ($previous instanceof AnnotationDocument && isset($previous->annotations[$previous])) {
+            $document->annotations ??= new SplObjectStorage();
+            $document->annotations[$document] = $previous->annotations[$previous];
+            unset($previous->annotations[$previous]);
+        }
+        $this->node = $document;
+    }
+
+    protected static function wrapNode(DOMNode $node): self
+    {
+        return match (true) {
+            $node instanceof \DOMElement => new XElement($node),
+            $node instanceof \DOMComment => new XComment($node),
+            $node instanceof \DOMCdataSection => new XCData($node),
+            $node instanceof \DOMText => new XText($node),
+            default => new XContentNode($node),
+        };
     }
 
     public function addAnnotation(object $annotation): void
@@ -82,7 +108,9 @@ abstract class XNode
     /** @return SplObjectStorage<DOMNode, list<object>>|WeakMap<DOMNode, list<object>> */
     private function annotationStore(): SplObjectStorage|WeakMap
     {
-        $document = $this->node->ownerDocument ?? $this->annotationDocument;
+        $document = $this->node instanceof DOMDocument
+            ? $this->node
+            : ($this->node->ownerDocument ?? $this->annotationDocument);
         if ($document instanceof AnnotationDocument) {
             return $document->annotations ??= new SplObjectStorage();
         }
