@@ -94,6 +94,49 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 建立、修改及儲存 XML 的完整範例請參考[套件說明](../README.md)。目前仍是 Microsoft LINQ to XML 的功能子集。
 
 
+## 元素導覽與順序
+
+| 方法 | 用途 |
+| --- | --- |
+| `ancestors($name = null)` | 從父元素開始，由近至遠列出祖先 |
+| `ancestorsAndSelf($name = null)` | 從目前元素開始，由近至遠列出祖先 |
+| `descendantsAndSelf($name = null)` | 從目前元素開始，按文件順序列出後代 |
+| `elementsBeforeSelf($name = null)` | 按文件順序列出目前元素之前的同層元素 |
+| `elementsAfterSelf($name = null)` | 按文件順序列出目前元素之後的同層元素 |
+
+以上查詢延遲執行，可傳入 `XName` 或名稱字串篩選。
+`isBefore($other)` 和 `isAfter($other)` 比較同一棵樹上的元素或註解。
+比較同一節點時兩者都回傳 `false`，傳入 `null` 時只有 `isAfter()` 回傳
+`true`。比較不同樹上的節點會拋出 `LogicException`。
+
+## 節點查詢
+
+| 方法 | 用途 |
+| --- | --- |
+| `nodes()` | 直接子節點 |
+| `descendantNodes()` | 所有後代節點 |
+| `descendantNodesAndSelf()` | 目前元素及所有後代節點 |
+| `nodesBeforeSelf()` | 目前元素之前的同層節點 |
+| `nodesAfterSelf()` | 目前元素之後的同層節點 |
+
+查詢會延遲執行，並按文件順序列出節點。元素和註解分別以 `XElement` 和
+`XComment` 回傳。文字、CDATA、處理指令等節點以 `XContentNode` 回傳，
+可用 `nodeType()`、`nodeName()`、`value()` 和 `toXml()` 讀取。
+屬性可透過 `attributes()` 查詢。
+
+## 插入與替換元素
+
+| 方法 | 用途 |
+| --- | --- |
+| `addFirst(...$content)` | 在首個子節點前插入內容 |
+| `addBeforeSelf(...$content)` | 在目前元素前插入同層節點 |
+| `addAfterSelf(...$content)` | 在目前元素後插入同層節點 |
+| `replaceWith(...$content)` | 以新節點替換目前元素，空內容會移除元素 |
+
+內容可包含元素、註解、純量文字、巢狀 iterable 或 `null`。插入的節點會被複製，
+內容會先完整列舉及驗證。文件層級只接受元素及註解，且最多保留一個根元素。
+同層插入及替換要求目前元素已連接到父元素或文件。
+
 ## replaceAll：替換全部 attributes 與子節點
 
 ```php
