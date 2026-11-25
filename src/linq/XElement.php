@@ -585,6 +585,8 @@ final class XElement extends XNode
         return match (true) {
             $node instanceof DOMElement => new self($node),
             $node instanceof \DOMComment => new XComment($node),
+            $node instanceof \DOMCdataSection => new XCData($node),
+            $node instanceof \DOMText => new XText($node),
             default => new XContentNode($node),
         };
     }

@@ -7,7 +7,7 @@ namespace Light\Xml\Linq;
 use DOMNode;
 
 /** A wrapper for XML content without a dedicated node class. */
-final class XContentNode extends XNode
+class XContentNode extends XNode
 {
     /** @internal */
     public function __construct(DOMNode $node)

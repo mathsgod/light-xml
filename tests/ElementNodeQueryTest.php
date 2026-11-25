@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Light\Xml\Tests;
 
-use Light\Xml\Linq\{XComment, XContentNode, XDocument, XElement, XNode};
+use Light\Xml\Linq\{XCData, XComment, XDocument, XElement, XNode, XText};
 use PHPUnit\Framework\TestCase;
 
 final class ElementNodeQueryTest extends TestCase
@@ -22,17 +22,37 @@ final class ElementNodeQueryTest extends TestCase
         self::assertSame([$xml, ...$descendants], $root->descendantNodesAndSelf()->select($serialize)->toArray());
 
         [$text, $comment, $child] = $root->nodes()->toArray();
-        self::assertInstanceOf(XContentNode::class, $text);
+        self::assertInstanceOf(XText::class, $text);
         self::assertSame(XML_TEXT_NODE, $text->nodeType());
         self::assertInstanceOf(XComment::class, $comment);
         self::assertInstanceOf(XElement::class, $child);
         [$cdata, $instruction] = $child->nodes()->toArray();
+        self::assertInstanceOf(XCData::class, $cdata);
         self::assertSame(XML_CDATA_SECTION_NODE, $cdata->nodeType());
         self::assertSame('b<c', $cdata->value());
         self::assertSame(XML_PI_NODE, $instruction->nodeType());
         self::assertSame('test', $instruction->nodeName());
         self::assertSame('data', $instruction->value());
         self::assertTrue($child->isAfter($text));
+    }
+
+    public function testTextEditsOnlyOneSegmentAndInsertedNodesAreCopied(): void
+    {
+        $text = new XText('Hello ');
+        $cdata = new XCData('a < b');
+        $root = new XElement('p', $text, new XElement('b', 'Ada'), $cdata, new XText('!'));
+        [$first, , $section, $last] = $root->nodes()->toArray();
+        $first->setValue('Hi & ');
+        $section->setValue('x < y');
+        $last->remove();
+
+        self::assertSame('<p>Hi &amp; <b>Ada</b><![CDATA[x < y]]></p>', $root->toXml());
+        self::assertSame('Hello ', $text->value());
+        self::assertSame('a < b', $cdata->value());
+        self::assertSame('p', (string) $first->parent()?->name());
+        self::assertNull($last->parent());
+        self::assertSame('&lt;&amp;', (string) new XText('<&'));
+        self::assertSame('a]]>b', XElement::parse('<p>'.new XCData('a]]>b').'</p>')->value());
     }
 
     public function testSiblingQueriesAreLazyAndWorkAtDocumentLevel(): void

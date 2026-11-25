@@ -159,10 +159,22 @@ Annotation 可附加任何物件，並按類別或介面查詢。同一節點經
 | `nodesBeforeSelf()` | 目前元素之前的同層節點 |
 | `nodesAfterSelf()` | 目前元素之後的同層節點 |
 
-查詢會延遲執行，並按文件順序列出節點。元素和註解分別以 `XElement` 和
-`XComment` 回傳。文字、CDATA、處理指令等節點以 `XContentNode` 回傳，
-可用 `nodeType()`、`nodeName()`、`value()` 和 `toXml()` 讀取。
+查詢會延遲執行，並按文件順序列出節點。元素、註解、文字和 CDATA 分別以
+`XElement`、`XComment`、`XText` 和 `XCData` 回傳。處理指令等其他節點以
+`XContentNode` 回傳，可用 `nodeType()`、`nodeName()`、`value()` 和 `toXml()` 讀取。
 屬性可透過 `attributes()` 查詢。
+
+### 文字與 CDATA
+
+```php
+use Light\Xml\Linq\{XCData, XElement, XText};
+
+$paragraph = new XElement('p', new XText('Hello '), new XElement('b', 'Ada'), new XCData('a < b'));
+$paragraph->nodes()->first()->setValue('Hi ');
+```
+
+`XText` 和 `XCData` 可傳入元素建構式、`add()` 或 `replaceNodes()`。
+加入時會複製節點。透過查詢取得的節點可用 `setValue()` 編輯或用 `remove()` 移除。
 
 ## 插入與替換元素
 
