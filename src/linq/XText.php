@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Light\Xml\Linq;
 
-use DOMElement;
 use DOMText;
 
 class XText extends XContentNode
@@ -33,15 +32,11 @@ class XText extends XContentNode
         $this->node->nodeValue = $value;
     }
 
-    public function parent(): ?XElement
-    {
-        $parent = $this->node->parentNode;
-        return $parent instanceof DOMElement ? new XElement($parent) : null;
-    }
-
     public function remove(): void
     {
-        $this->node->parentNode?->removeChild($this->node);
+        if ($this->node->parentNode !== null) {
+            parent::remove();
+        }
     }
 
     private static function validate(string $value): void

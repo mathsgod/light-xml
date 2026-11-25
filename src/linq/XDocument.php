@@ -18,12 +18,14 @@ final class XDocument extends XContainer
         if (count($content) === 1 && $content[0] instanceof self) {
             $this->document = clone $content[0]->document;
             parent::__construct($this->document);
+            $this->document->wrapper = $this;
             $this->declaration = $content[0]->declaration;
             $this->declarationOverridden = $content[0]->declarationOverridden;
             return;
         }
         $this->document = self::newDocument();
         parent::__construct($this->document);
+        $this->document->wrapper = $this;
         if (($content[0] ?? null) instanceof XDeclaration) {
             $this->setDeclaration(array_shift($content));
         }
@@ -33,7 +35,9 @@ final class XDocument extends XContainer
     private function setDocument(AnnotationDocument $document): void
     {
         $this->replaceDocumentNode($document);
+        $this->document->wrapper = null;
         $this->document = $document;
+        $document->wrapper = $this;
     }
 
     public function declaration(): ?XDeclaration
@@ -211,6 +215,12 @@ final class XDocument extends XContainer
         $result->setDocument($document);
         $result->declaration = self::readFileDeclaration($path);
         return $result;
+    }
+
+    public function documentType(): ?XDocumentType
+    {
+        $doctype = $this->document->doctype;
+        return $doctype === null ? null : new XDocumentType($doctype);
     }
 
     public function root(): ?XElement

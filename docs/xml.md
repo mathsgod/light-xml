@@ -133,7 +133,7 @@ $name = $people[0]->element(new XName('name', 'urn:people'))?->value(); // 'Ada'
 | `elementsAfterSelf($name = null)` | 按文件順序列出目前元素之後的同層元素 |
 
 以上查詢延遲執行，可傳入 `XName` 或名稱字串篩選。
-`isBefore($other)` 和 `isAfter($other)` 比較同一棵樹上的元素或註解。
+`isBefore($other)` 和 `isAfter($other)` 比較同一棵樹上的節點，所有 XNode 子類別都可使用。
 比較同一節點時兩者都回傳 `false`，傳入 `null` 時只有 `isAfter()` 回傳
 `true`。比較不同樹上的節點會拋出 `LogicException`。
 
@@ -149,7 +149,17 @@ $user->removeAnnotations(Throwable::class);
 Annotation 可附加任何物件，並按類別或介面查詢。同一節點經不同查詢取得時
 會共用 annotation。複製節點或輸出 XML 時，annotation 留在原節點上。
 
-## XContainer
+## XObject、XNode 與 XContainer
+
+`XObject` 提供共用的 annotation API。`XAttribute` 直接繼承自 `XObject`，
+而元素、文件、文字、CDATA、註解等節點繼承自 `XNode`。
+`XNode` 提供祖先及同層查詢，也提供 `addBeforeSelf()`、`addAfterSelf()`、
+`replaceWith()` 和 `remove()`。文件本身位於樹頂，祖先及同層查詢會回傳空序列。
+
+`XObject` 提供 `nodeType()`（PHP 的 `XML_*` 類型常數）、`baseUri()`（沿用
+DOM 的 URI 解析）、`parent()` 和 `document()`。根元素的 `parent()` 回傳
+`null`，可用 `document()` 取得所屬文件。未接入文件的節點，其 `document()`
+回傳 `null`。`XNode` 的 `nextNode()` 和 `previousNode()` 回傳相鄰的同層節點。
 
 `XDocument` 和 `XElement` 都繼承自 `XContainer`，而 `XContainer` 繼承自
 `XNode`。可用 `XContainer` 作為型別，讓同一段程式查詢或修改文件與元素。
@@ -176,6 +186,22 @@ Annotation 可附加任何物件，並按類別或介面查詢。同一節點經
 `addFirst()` 在現有節點前插入內容，`replaceNodes()` 會先讀取並驗證輸入，
 因此可以直接傳入同一文件的 `nodes()`。XML 宣告仍可透過 `declaration()` 讀取。
 從另一份文件插入文件類型時，DOM 文件需要重建，原有節點 wrapper 會指向已分離的節點。
+
+### 文件類型
+
+```php
+use Light\Xml\Linq\{XDocument, XDocumentType, XElement};
+
+$doc = new XDocument(
+    new XDocumentType('report', systemId: 'report.dtd'),
+    new XElement('report'),
+);
+$systemId = $doc->documentType()?->systemId();
+```
+
+`documentType()` 回傳 `XDocumentType` 或 `null`。亦可在 `nodes()` 查詢中取得
+該節點，並用 `name()`、`publicId()`、`systemId()` 和 `internalSubset()` 讀取欄位。
+同一文件最多有一個 `DOCTYPE`，位置須在根元素之前。
 
 ### 文字與 CDATA
 

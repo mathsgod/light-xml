@@ -14,8 +14,11 @@ final class AnnotationDocument extends DOMDocument
     /** @var SplObjectStorage<DOMNode, list<object>>|null */
     public ?SplObjectStorage $annotations = null;
 
+    public ?XDocument $wrapper = null;
+
     public function __clone()
     {
         $this->annotations = null;
+        $this->wrapper = null;
     }
 }

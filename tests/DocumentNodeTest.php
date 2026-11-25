@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Light\Xml\Tests;
 
-use Light\Xml\Linq\{XComment, XContentNode, XDocument, XElement, XNode};
+use Light\Xml\Linq\{XComment, XDocument, XDocumentType, XElement, XNode};
 use PHPUnit\Framework\TestCase;
 
 final class DocumentNodeTest extends TestCase
@@ -48,12 +48,35 @@ final class DocumentNodeTest extends TestCase
     {
         $source = XDocument::parse('<!DOCTYPE root [<!ENTITY text "value">]><root/>');
         $type = $source->nodes()->first();
-        self::assertInstanceOf(XContentNode::class, $type);
+        self::assertInstanceOf(XDocumentType::class, $type);
         $doc = new XDocument(new XElement('root'));
         $doc->addFirst($type);
 
         self::assertStringContainsString('<!ENTITY text "value">', $doc->toXml());
         self::assertSame('root', (string) $doc->root()->name());
         self::assertSame(XML_DOCUMENT_TYPE_NODE, $source->nodes()->first()->nodeType());
+    }
+
+    public function testConstructedDocumentTypeRetainsIdentifiersAndSubset(): void
+    {
+        $type = new XDocumentType('report', '-//Example//DTD Report//EN', 'report.dtd', '<!ENTITY company "Acme">');
+        $doc = new XDocument(new XDocumentType($type), new XElement('report'));
+        $loaded = XDocument::parse($doc->toXml());
+        $loadedType = $loaded->documentType();
+
+        self::assertSame('report', $loadedType?->name());
+        self::assertSame('-//Example//DTD Report//EN', $loadedType->publicId());
+        self::assertSame('report.dtd', $loadedType->systemId());
+        self::assertStringContainsString('<!ENTITY company "Acme">', $loadedType->internalSubset());
+        self::assertInstanceOf(XDocumentType::class, $loaded->firstNode());
+        self::assertNull((new XDocument())->documentType());
+        self::assertNull((new XDocumentType('report'))->systemId());
+        self::assertSame('', (new XDocumentType('report', systemId: ''))->systemId());
+    }
+
+    public function testMalformedInternalSubsetIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new XDocumentType('report', internalSubset: '<!ENTITY unclosed');
     }
 }

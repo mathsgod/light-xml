@@ -27,11 +27,6 @@ class XContentNode extends XNode
         return $this->node === $node;
     }
 
-    public function nodeType(): int
-    {
-        return $this->node->nodeType;
-    }
-
     public function nodeName(): string
     {
         return $this->node->nodeName;

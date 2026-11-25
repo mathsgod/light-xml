@@ -6,7 +6,7 @@ namespace Light\Xml\Linq;
 
 use DOMAttr;
 
-final class XAttribute extends XNode
+final class XAttribute extends XObject
 {
     private readonly DOMAttr $attribute;
 

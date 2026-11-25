@@ -102,57 +102,8 @@ final class XElement extends XContainer
         }
     }
 
-    public function addBeforeSelf(mixed ...$content): void
-    {
-        $this->insertBeside($content);
-    }
-
-    public function addAfterSelf(mixed ...$content): void
-    {
-        $this->insertBeside($content, after: true);
-    }
-
-    public function replaceWith(mixed ...$content): void
-    {
-        $this->insertBeside($content, replace: true);
-    }
-
-    private function insertBeside(array $content, bool $after = false, bool $replace = false): void
-    {
-        $element = $this->elementNode;
-        $parent = $element->parentNode;
-        if ($parent === null) {
-            throw new \LogicException('The element has no parent.');
-        }
-        $nodes = self::prepareInsertion($parent, $content);
-        if ($element->parentNode !== $parent) {
-            throw new \LogicException('The element changed parents while collecting content.');
-        }
-        if ($parent instanceof \DOMDocument) {
-            $roots = (int) (!$replace && $parent->documentElement !== null);
-            foreach ($nodes as $node) {
-                if ($node instanceof DOMElement) {
-                    ++$roots;
-                } elseif (!$node instanceof \DOMComment) {
-                    throw new \InvalidArgumentException('Only elements and comments can be inserted at document level.');
-                }
-            }
-            if ($roots > 1) {
-                throw new \InvalidArgumentException('An XML document can have only one root element.');
-            }
-        }
-
-        $before = $after || $replace ? $element->nextSibling : $element;
-        if ($replace) {
-            $parent->removeChild($element);
-        }
-        foreach ($nodes as $node) {
-            $parent->insertBefore($node, $before);
-        }
-    }
-
-    /** @return list<DOMNode> */
-    private static function prepareInsertion(DOMNode $parent, array $content): array
+    /** @internal @return list<DOMNode> */
+    public static function prepareInsertion(DOMNode $parent, array $content): array
     {
         $staging = new self('content');
         $staging->addContent($content, allowAttributes: false);
@@ -286,20 +237,6 @@ final class XElement extends XContainer
         }
     }
 
-    public function remove(): void
-    {
-        if ($this->elementNode->parentNode === null) {
-            throw new \LogicException('The element has no parent.');
-        }
-        $this->elementNode->parentNode->removeChild($this->elementNode);
-    }
-
-    public function parent(): ?self
-    {
-        $parent = $this->elementNode->parentNode;
-        return $parent instanceof DOMElement ? new self($parent) : null;
-    }
-
     public function toXml(bool $formatOutput = false): string
     {
         $document = $this->elementNode->ownerDocument;
@@ -407,55 +344,9 @@ final class XElement extends XContainer
     }
 
     /** @return IEnumerable<XElement> */
-    public function ancestors(XName|string|null $name = null): IEnumerable
-    {
-        return $this->queryAncestors($name, includeSelf: false);
-    }
-
-    /** @return IEnumerable<XElement> */
     public function ancestorsAndSelf(XName|string|null $name = null): IEnumerable
     {
         return $this->queryAncestors($name, includeSelf: true);
-    }
-
-    /** @return IEnumerable<XElement> */
-    private function queryAncestors(XName|string|null $name, bool $includeSelf): IEnumerable
-    {
-        $element = $this->elementNode;
-        $name = $name === null ? null : XName::from($name);
-        return Enumerable::defer(static function () use ($element, $name, $includeSelf): iterable {
-            $start = $includeSelf ? $element : $element->parentNode;
-            for ($node = $start; $node instanceof DOMElement; $node = $node->parentNode) {
-                if ($name === null || $name->matches($node)) {
-                    yield new self($node);
-                }
-            }
-        });
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function elementsBeforeSelf(XName|string|null $name = null): IEnumerable
-    {
-        return $this->querySiblings($name, before: true);
-    }
-
-    /** @return IEnumerable<XElement> */
-    public function elementsAfterSelf(XName|string|null $name = null): IEnumerable
-    {
-        return $this->querySiblings($name, before: false);
-    }
-
-    /** @return IEnumerable<XElement> */
-    private function querySiblings(XName|string|null $name, bool $before): IEnumerable
-    {
-        $name = $name === null ? null : XName::from($name);
-        return Enumerable::defer(function () use ($name, $before): iterable {
-            foreach ($this->siblings($before) as $node) {
-                if ($node instanceof DOMElement && ($name === null || $name->matches($node))) {
-                    yield new self($node);
-                }
-            }
-        });
     }
 
     /** @return IEnumerable<XNode> */
@@ -465,91 +356,6 @@ final class XElement extends XContainer
             yield new self($this->elementNode);
             yield from self::childNodes($this->elementNode, true);
         });
-    }
-
-    /** @return IEnumerable<XNode> */
-    public function nodesBeforeSelf(): IEnumerable
-    {
-        return $this->siblingNodes(before: true);
-    }
-
-    /** @return IEnumerable<XNode> */
-    public function nodesAfterSelf(): IEnumerable
-    {
-        return $this->siblingNodes(before: false);
-    }
-
-    /** @return IEnumerable<XNode> */
-    private function siblingNodes(bool $before): IEnumerable
-    {
-        return Enumerable::defer(function () use ($before): iterable {
-            foreach ($this->siblings($before) as $node) {
-                yield self::wrapNode($node);
-            }
-        });
-    }
-
-    /** @return \Generator<int, DOMNode> */
-    private function siblings(bool $before): \Generator
-    {
-        $element = $this->elementNode;
-        $start = $before ? $element->parentNode?->firstChild : $element->nextSibling;
-        for ($node = $start; $node !== null && $node !== $element; $node = $node->nextSibling) {
-            yield $node;
-        }
-    }
-
-    public function isBefore(self|XComment|XContentNode|null $other): bool
-    {
-        return $this->compareDocumentOrder($other) < 0;
-    }
-
-    public function isAfter(self|XComment|XContentNode|null $other): bool
-    {
-        return $this->compareDocumentOrder($other) > 0;
-    }
-
-    private function compareDocumentOrder(self|XComment|XContentNode|null $other): int
-    {
-        if ($other === null) {
-            return 1;
-        }
-        if ($this->node === $other->node) {
-            return 0;
-        }
-
-        $left = self::pathToRoot($this->node);
-        $right = self::pathToRoot($other->node);
-        if (end($left) !== end($right)) {
-            throw new \LogicException('The nodes do not share a common ancestor.');
-        }
-
-        while ($left !== [] && $right !== [] && end($left) === end($right)) {
-            array_pop($left);
-            array_pop($right);
-        }
-        if ($left === [] || $right === []) {
-            return ($left !== []) <=> ($right !== []);
-        }
-
-        $rightBranch = end($right);
-        for ($node = end($left)->nextSibling; $node !== null; $node = $node->nextSibling) {
-            if ($node === $rightBranch) {
-                return -1;
-            }
-        }
-        return 1;
-    }
-
-    /** @return non-empty-list<DOMNode> */
-    private static function pathToRoot(DOMNode $node): array
-    {
-        $path = [$node];
-        while ($node->parentNode !== null) {
-            $node = $node->parentNode;
-            $path[] = $node;
-        }
-        return $path;
     }
 
     public function attribute(XName|string $name): ?XAttribute

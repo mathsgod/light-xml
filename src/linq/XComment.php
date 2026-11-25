@@ -6,7 +6,6 @@ namespace Light\Xml\Linq;
 
 use DOMComment;
 use DOMDocument;
-use DOMElement;
 use DOMNode;
 use Light\Linq\Enumerable;
 use Light\Linq\IEnumerable;
@@ -39,15 +38,11 @@ final class XComment extends XNode
         $this->comment->data = $value;
     }
 
-    public function parent(): ?XElement
-    {
-        $parent = $this->comment->parentNode;
-        return $parent instanceof DOMElement ? new XElement($parent) : null;
-    }
-
     public function remove(): void
     {
-        $this->comment->parentNode?->removeChild($this->comment);
+        if ($this->comment->parentNode !== null) {
+            parent::remove();
+        }
     }
 
     public function toXml(): string
