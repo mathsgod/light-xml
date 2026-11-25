@@ -4,26 +4,29 @@ declare(strict_types=1);
 
 namespace Light\Xml;
 
+use Light\Xml\Linq\XDocument;
 use XMLReader as NativeReader;
 
 final class XmlReader
 {
-    private function __construct(private readonly NativeReader $reader)
-    {
+    private function __construct(
+        private readonly NativeReader $reader,
+        private readonly ?\Closure $readSource = null,
+    ) {
     }
 
     public static function fromString(string $xml): self
     {
         $reader = self::newReader();
         self::withXmlErrors(static fn (): bool => $reader->XML($xml, null, LIBXML_NONET));
-        return new self($reader);
+        return new self($reader, static fn (): string => $xml);
     }
 
     public static function openUri(string $uri): self
     {
         $reader = self::newReader();
         self::withXmlErrors(static fn (): bool => $reader->open($uri, null, LIBXML_NONET));
-        return new self($reader);
+        return new self($reader, static fn (): string|false => @file_get_contents($uri));
     }
 
     /** @param resource $stream */
@@ -35,9 +38,24 @@ final class XmlReader
         if (!method_exists(NativeReader::class, 'fromStream')) {
             throw new \LogicException('XmlReader::fromStream() requires PHP 8.4 or later and ext-xmlreader.');
         }
-        return new self(self::withXmlErrors(
+        $start = stream_get_meta_data($stream)['seekable'] ? ftell($stream) : false;
+        $reader = self::withXmlErrors(
             static fn (): NativeReader => NativeReader::fromStream($stream, null, LIBXML_NONET),
-        ));
+        );
+        $readSource = $start === false ? null : static function () use ($stream, $start): string|false {
+            $position = ftell($stream);
+            if ($position === false || fseek($stream, $start) !== 0) {
+                return false;
+            }
+            try {
+                return stream_get_contents($stream);
+            } finally {
+                if (fseek($stream, $position) !== 0) {
+                    throw new \RuntimeException('Unable to restore the XML stream position.');
+                }
+            }
+        };
+        return new self($reader, $readSource);
     }
 
     public function read(): bool
@@ -62,6 +80,9 @@ final class XmlReader
                 NativeReader::ELEMENT, NativeReader::DOC_TYPE, NativeReader::COMMENT, NativeReader::PI,
             ], true)) {
                 $outer = self::withXmlErrors(fn (): string => $this->reader->readOuterXml());
+                if ($outer === '' && $this->nodeType() === NativeReader::DOC_TYPE) {
+                    $outer = $this->readDocumentType();
+                }
                 if ($outer === '') {
                     throw new \RuntimeException('Unable to serialize the current XML reader node.');
                 }
@@ -70,6 +91,16 @@ final class XmlReader
         } while ($this->read());
 
         return $xml;
+    }
+
+    private function readDocumentType(): string
+    {
+        // Recent libxml versions exclude DTD nodes from readOuterXml().
+        $source = $this->readSource === null ? false : ($this->readSource)();
+        if ($source === false) {
+            throw new \RuntimeException('Reading this DOCTYPE requires a replayable XML source on this libxml version.');
+        }
+        return XDocument::parse($source)->documentType()?->toXml() ?? '';
     }
 
     public function close(): void

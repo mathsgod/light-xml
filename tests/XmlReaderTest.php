@@ -10,6 +10,27 @@ use PHPUnit\Framework\TestCase;
 
 final class XmlReaderTest extends TestCase
 {
+    public function testLoadPreservesTheDoctypeFromASeekableStream(): void
+    {
+        if (!method_exists(\XMLReader::class, 'fromStream')) {
+            self::markTestSkipped('Native XMLReader stream support requires PHP 8.4.');
+        }
+
+        $stream = fopen('php://temp', 'w+b');
+        try {
+            fwrite($stream, 'skip<!DOCTYPE r [<!ENTITY e "value">]><r>&e;</r><!--tail-->');
+            fseek($stream, 4);
+            $reader = XmlReader::fromStream($stream);
+            $doc = XDocument::load($reader);
+            self::assertSame('r', $doc->documentType()?->name());
+            self::assertSame('value', $doc->root()->value());
+            self::assertSame('tail', $doc->comments()->single()->value());
+            $reader->close();
+        } finally {
+            fclose($stream);
+        }
+    }
+
     public function testLoadConsumesRemainingTopLevelNodes(): void
     {
         $reader = XmlReader::fromString('<!--skip--><?p data?><!DOCTYPE r [<!ENTITY e "value">]><r>&e;</r><!--tail-->');

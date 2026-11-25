@@ -39,6 +39,10 @@ $inline = XDocument::parse('<inventory><item>Notebook</item></inventory>');
 
 `LoadOptions::PreserveWhitespace` preserves whitespace nodes by default. `LoadOptions::None` lets DOM remove whitespace it recognizes as indentation. The caller closes the stream or reader. Loading through `XmlReader` omits the original XML declaration.
 
+On libxml versions that omit the DOCTYPE from reader output, loading through an
+`XmlReader` requires a replayable source when a DOCTYPE is present. Use an XML
+string, a file, or a seekable stream for these documents.
+
 ## Read the document structure
 
 | Method | Result |
