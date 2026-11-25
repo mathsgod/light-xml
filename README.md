@@ -1,17 +1,25 @@
 # light-xml
 
-A LINQ-style XML package for PHP 8.3+, inspired by the core [.NET XDocument](https://learn.microsoft.com/en-us/dotnet/api/system.xml.linq.xdocument?view=net-10.0) API. This package implements a subset of its features, rather than a complete port of the .NET API.
+A LINQ-style XML package for PHP 8.3+, inspired by the core [.NET XDocument](https://learn.microsoft.com/en-us/dotnet/api/system.xml.linq.xdocument?view=net-10.0) API.
 
-## Requirements and development setup
+## Installation
 
-Requires PHP 8.3+ and `ext-dom`. Depends on the published `mathsgod/light-linq ^1.0` package from Packagist. light-linq provides `IEnumerable` queries and depends on the standalone collections package. The XML implementation, query tests, and fixtures have been moved from light-linq into this package.
+Install the Composer package in your application.
+
+```sh
+composer require mathsgod/php-xml
+```
+
+Requires PHP 8.3+ and `ext-dom`. Composer installs `mathsgod/light-linq ^1.0` for lazy `IEnumerable` queries.
+
+## Development
 
 ```sh
 composer install
 composer test
 ```
 
-The namespace is `Light\Xml\Linq`, mapped to `src/linq/` through PSR-4. Methods use PHP camelCase naming.
+Import tree types such as `XDocument` and `XElement` from `Light\Xml\Linq`. The XML reader and writer are in `Light\Xml`.
 
 ## Documentation
 
@@ -44,7 +52,7 @@ $document = new XDocument(
 
 $firstUser = $document->root()->element('user');
 $firstUser->setElementValue('name', 'Alice');
-$firstUser->setAttributeValue('active', true);
+$firstUser->setElementValue('active', true);
 
 $xml = $document->toXml(formatOutput: true);
 $document->save('users.xml', formatOutput: true);
@@ -59,12 +67,12 @@ $loaded = XDocument::load('users.xml');
 $parsed = XDocument::parse('<root><item>one</item><item>two</item></root>');
 
 $names = $loaded->descendants('user')
-    ->where(fn ($user) => $user->attribute('active')?->value() === 'true')
+    ->where(fn ($user) => $user->element('active')?->value() === 'true')
     ->select(fn ($user) => $user->element('name')?->value())
     ->toArray(); // ['Alice']
 ```
 
-`elements()` enumerates direct child elements only; `descendants()` enumerates all descendant elements. Document descendants include the root element, while element descendants exclude the element itself. Query sequences are lazy `IEnumerable` instances supporting light-linq filtering, projection, grouping, and other operations. The document itself is loaded entirely into memory during parse/load.
+`elements()` enumerates direct child elements only. `descendants()` enumerates all descendant elements. Document descendants include the root element, while element descendants exclude the element itself. Query sequences are lazy `IEnumerable` instances supporting light-linq filtering, projection, grouping, and other operations. The document itself is loaded entirely into memory during parse/load.
 
 ## Build another document from query results
 
@@ -77,28 +85,28 @@ $transformed = new XDocument(
 );
 ```
 
-Constructors and `add()` accept elements and nested iterables. Elements also accept attributes, strings, numbers, and booleans. Null values are ignored. Documents accept only root elements or iterables containing them, with at most one root element. Document-level text and other objects are rejected.
+Constructors and `add()` accept elements, comments, and nested iterables. Elements also accept attributes, text nodes, CDATA, strings, numbers, and booleans. Documents can contain one root element, processing instructions, comments, and a DOCTYPE before the root. The document constructor also accepts an optional leading `XDeclaration`. Both containers ignore `null` entries.
 
 ## Editing and copying rules
 
 | Method | Behavior |
 | --- | --- |
-| `new XDocument()` | Creates an empty document; `root()` returns null |
+| `new XDocument()` | Creates an empty document. `root()` returns `null` |
 | `new XDocument($otherDocument)` | Deep-copies the entire document |
 | `new XElement($otherElement)` | Deep-copies the element |
 | `add(...$content)` | Adds content |
 | `setValue($value)` | Replaces all child content while preserving attributes |
-| `setElementValue($name, $value)` | Updates the first matching child element or adds one; null removes it |
-| `setAttributeValue($name, $value)` | Adds or updates an attribute; null removes it |
+| `setElementValue($name, $value)` | Updates the first matching child element or adds one. Pass `null` to remove it |
+| `setAttributeValue($name, $value)` | Adds or updates an attribute. Pass `null` to remove it |
 | `removeNodes()` | Removes child nodes while preserving element attributes |
 | `replaceAll(...$content)` | Replaces attributes and child nodes after snapshotting new content |
 | `XElement::remove()` | Removes the element from its parent |
 | `XElement::parent()` | Returns the parent element, or null |
 | `XAttribute::setValue()` / `remove()` | Updates or removes an attribute |
 
-Wrappers returned by queries reference nodes in the original document, so edits update that document. Passing an existing element to a constructor or `add()` **always creates a deep copy** instead of moving the original node. This is an explicit rule of this implementation; .NET may attach an unparented node directly to the new tree.
+Wrappers returned by queries reference nodes in the original document, so edits update that document. Passing an existing element to a constructor or `add()` **always creates a deep copy** instead of moving the original node. This is an explicit rule of this implementation. .NET may attach an unparented node directly to the new tree.
 
-Adding a duplicate attribute name throws `InvalidArgumentException`; use `setAttributeValue()` to overwrite it. Calling `remove()` on an element or attribute without a parent throws `LogicException`.
+Adding a duplicate attribute name throws `InvalidArgumentException`. Use `setAttributeValue()` to overwrite it. Calling `remove()` on an element or attribute without a parent throws `LogicException`.
 
 ### Replace all element content
 
@@ -119,8 +127,8 @@ target, so queries over the current element work safely. Invalid content,
 duplicate attributes or input iteration failures leave the target unchanged
 (unless user callbacks themselves modify it). Existing source trees are copied.
 
-Namespace names survive serialization; DOM may retain namespace declarations
-or choose different prefixes. This does not implement .NET change events.
+Namespace names survive serialization. DOM may retain namespace declarations
+or choose different prefixes. Subscribe through `onChanging()` and `onChanged()` to observe mutations. See the [change event guide](docs/xml.md#change-events) for listener and batch behavior.
 
 ## Namespaces
 
@@ -140,9 +148,18 @@ $id = $user->attribute('{urn:ids}id')->value(); // '7'
 
 Use `XName` or `{namespace-uri}localName` for names, rather than a prefix in place of the namespace URI. The library generates namespace prefixes for attributes. A local name alone matches nodes without a namespace.
 
-## I/O and errors
+## XML input and output
 
-Both \`XDocument\` and \`XElement\` support paths and PHP streams. The optional \`light-io\` package adds text reader and writer support. PHP's \`ext-xmlreader\` and \`ext-xmlwriter\` enable the XML reader and writer APIs. See the [XDocument I/O reference](docs/XDocument.md#載入-xml) for accepted inputs and options.
+| Method | Supported inputs or outputs |
+| --- | --- |
+| `parse($xml)` | XML string |
+| `load($path)` | File path, readable PHP stream, `Light\IO\TextReader`, or `Light\Xml\XmlReader` |
+| `toXml()` | XML string |
+| `save($path)` | File path, writable PHP stream, `Light\IO\TextWriter`, or `Light\Xml\XmlWriter` |
+
+Install `mathsgod/light-io` to use the text reader and writer interfaces. The XML reader and writer require `ext-xmlreader` and `ext-xmlwriter` respectively. File paths and PHP streams work with the core package.
+
+Loading preserves whitespace by default. Pass `options: LoadOptions::None` to let DOM remove indentation whitespace. Use `formatOutput: true` to indent output, or `options: SaveOptions::DisableFormatting` to suppress automatic indentation. XML writer destinations use the writer's settings. See the [XDocument guide](docs/XDocument.md) for details.
 
 ## Differences from .NET
 
@@ -150,6 +167,6 @@ The package covers synchronous XML construction, navigation, editing and I/O. As
 
 ## Migrating from light-linq XML
 
-The old `Light\Linq\Xml` classes have been removed. Add this package as an application dependency and update imports to `Light\Xml\Linq`, for example: `use Light\Xml\Linq\XDocument;`.
+The old `Light\Linq\Xml` classes have been removed. Add this package as an application dependency and import types from `Light\Xml\Linq`, such as `XDocument`.
 
-Existing parse/load, root, elements/descendants, attribute/attributes, XName, and toXml usage remains supported. Previous query examples are available in the [XML query guide](docs/xml.md). light-linq retains collection queries and provider functionality; only this package requires `ext-dom`. The dependency direction is light-xml → light-linq → light-collections.
+Existing parse/load, root, elements/descendants, attribute/attributes, XName, and toXml usage remains supported. Previous query examples are available in the [XML query guide](docs/xml.md). Light-linq retains collection queries and provider functionality. Only this package requires `ext-dom`. The dependency direction is light-xml → light-linq → light-collections.

@@ -1,10 +1,10 @@
 # XDocument
 
-[XML 指南](xml.md) · [XElement](XElement.md)
+[XML guide](xml.md) · [XElement](XElement.md)
 
-`Light\Xml\Linq\XDocument` 代表整份 XML 文件，包括根元素、宣告，以及根元素前後的註解和處理指令。文件也可以包含一個位於根元素之前的 `DOCTYPE`。
+`Light\Xml\Linq\XDocument` represents an entire XML document, including its root element, declaration, comments, and processing instructions. A document can also contain one `DOCTYPE` before the root element.
 
-## 建立文件
+## Create a document
 
 ~~~php
 use Light\Xml\Linq\{XComment, XDeclaration, XDocument, XDocumentType, XElement};
@@ -19,17 +19,16 @@ $doc = new XDocument(
 $copy = new XDocument($doc);
 ~~~
 
-`new XDocument()` 建立空文件，可以稍後用 `add()` 加入根元素。建構式接受前置的 `XDeclaration`。複製文件會複製 XML 樹，annotation 和事件訂閱留在原節點。
+`new XDocument()` creates an empty document. Add a root later with `add()`. The constructor accepts an optional leading `XDeclaration`. Copying a document copies its XML tree. Annotations and event subscriptions stay on the original nodes.
 
-## 載入 XML
+## Load XML
 
-| 入口 | 輸入與行為 |
+| Method | Input and behavior |
 | --- | --- |
-| `parse($xml, options: ...)` | 解析 XML 內容字串。 |
-| `load($path, options: ...)` | 從可讀的本機檔案路徑載入。 |
-| `load($stream, options: ...)` | 從可讀 PHP stream 的目前位置讀到 EOF。 |
-| `load($reader, options: ...)` | 從選用的 `Light\IO\TextReader` 讀取剩餘內容。 |
-| `load($reader, options: ...)` | 從 `Light\Xml\XmlReader` 讀取剩餘頂層節點至 EOF。可傳入尚未讀取或已定位於頂層的 reader。 |
+| `parse($xml, options: ...)` | Parse a string containing XML. |
+| `load($path, options: ...)` | Read a local file path. |
+| `load($stream, options: ...)` | Read a PHP stream from its current position to EOF. |
+| `load($reader, options: ...)` | Read the remaining text from an optional `Light\IO\TextReader`, or read the remaining top-level nodes from a `Light\Xml\XmlReader`. The XML reader can be unstarted or positioned at a top-level node. |
 
 ~~~php
 use Light\Xml\Linq\{LoadOptions, XDocument};
@@ -38,32 +37,32 @@ $doc = XDocument::load('inventory.xml', options: LoadOptions::None);
 $inline = XDocument::parse('<inventory><item>Notebook</item></inventory>');
 ~~~
 
-預設 `LoadOptions::PreserveWhitespace` 保留空白節點。`LoadOptions::None` 讓 DOM 移除可辨識的縮排空白。呼叫者負責關閉輸入 stream 或 reader。透過 `XmlReader` 載入時，原始 XML 宣告會省略。
+`LoadOptions::PreserveWhitespace` preserves whitespace nodes by default. `LoadOptions::None` lets DOM remove whitespace it recognizes as indentation. The caller closes the stream or reader. Loading through `XmlReader` omits the original XML declaration.
 
-## 讀取文件結構
+## Read the document structure
 
-| 方法 | 回傳 |
+| Method | Result |
 | --- | --- |
-| `root()` | 根元素或 `null`。 |
-| `declaration()` | XML 宣告或 `null`。 |
-| `documentType()` | `XDocumentType` 或 `null`。 |
-| `firstNode()`、`lastNode()` | 頂層首尾節點或 `null`。 |
-| `element($name)`、`elements($name = null)` | 符合名稱的根元素，或根元素序列。 |
-| `descendants($name = null)` | 按文件順序列出符合條件的元素，涵蓋根元素。 |
-| `nodes()`、`descendantNodes()` | 分別列出頂層節點和所有後代節點。 |
-| `comments()` | 頂層註解序列。 |
+| `root()` | The root element or `null`. |
+| `declaration()` | The XML declaration or `null`. |
+| `documentType()` | The `XDocumentType` or `null`. |
+| `firstNode()`, `lastNode()` | The first or last top-level node, or `null`. |
+| `element($name)`, `elements($name = null)` | The matching root element or a sequence containing it. |
+| `descendants($name = null)` | Matching elements in document order, including the root when it matches. |
+| `nodes()`, `descendantNodes()` | Top-level nodes or all descendant nodes, respectively. |
+| `comments()` | Top-level comments. |
 
-序列以延遲執行的 `IEnumerable` 回傳。查詢得到的節點可以直接修改原樹。宣告由 `declaration()` 取得，`nodes()` 會列出 `DOCTYPE`。
+Queries return lazy `IEnumerable` sequences. Editing a returned node updates the original tree. `nodes()` includes the `DOCTYPE`. Use `declaration()` to retrieve the XML declaration.
 
-## 修改文件
+## Edit a document
 
-- `add(...$content)` 在末尾加入節點，`addFirst(...$content)` 在開頭加入。
-- `replaceNodes(...$content)` 先讀取並驗證輸入，再替換所有頂層節點。可傳入同一文件的 `nodes()`。
-- `removeNodes()` 清空頂層節點。要修改宣告，使用 `setDeclaration($declaration)`。傳入 `null` 可省略輸出宣告。
+- `add(...$content)` appends nodes. `addFirst(...$content)` inserts them before the current first node.
+- `replaceNodes(...$content)` reads and validates input before replacing the top-level nodes. It accepts the same document's `nodes()` sequence.
+- `removeNodes()` clears the top-level nodes. Use `setDeclaration($declaration)` to update the declaration or pass `null` to omit it from output.
 
-內容可含元素、註解、處理指令、文件類型、巢狀 iterable 或 `null`。文件最多有一個根元素及一個文件類型。加入節點會複製內容。匯入另一份文件的 `DOCTYPE` 時會重建底層 DOM，已取得的舊節點物件會指向分離的節點。
+Content can include elements, comments, processing instructions, a document type, nested iterables, and `null`. A document can have at most one root and one document type. Insertion copies the supplied nodes. Importing a `DOCTYPE` from a different document rebuilds the underlying DOM and detaches previously returned node wrappers.
 
-## 序列化與儲存
+## Serialize and save
 
 ~~~php
 use Light\Xml\Linq\SaveOptions;
@@ -73,13 +72,13 @@ $doc->save('inventory.xml', formatOutput: true);
 $doc->save($stream, options: SaveOptions::DisableFormatting);
 ~~~
 
-`toXml()` 和字串轉換會回傳 XML。`save()` 要求文件有根元素，接受檔案路徑、可寫 PHP stream、選用的 `Light\IO\TextWriter`，或 `Light\Xml\XmlWriter`。Stream 會從目前位置寫入。傳入 `XmlWriter` 時會使用 `writeTo()`，由 writer 控制輸出。各種 stream 和 writer 都由呼叫者關閉。
+`toXml()` and string conversion return the XML. `save()` requires a root and accepts a file path, writable PHP stream, optional `Light\IO\TextWriter`, or `Light\Xml\XmlWriter`. Stream output starts at the current position. For `XmlWriter`, `save()` uses `writeTo()` and the writer controls its output. The caller closes the stream or writer.
 
-`formatOutput: true` 啟用 DOM 縮排。`SaveOptions::DisableFormatting` 可停用該縮排，現有空白文字仍會輸出。
+`formatOutput: true` enables DOM indentation. `SaveOptions::DisableFormatting` suppresses that indentation while preserving existing whitespace text.
 
-### XML Reader 與 Writer
+### XML readers and writers
 
-`createReader()` 會從目前序列化結果建立完整快照。它需要 `ext-xmlreader`。`createWriter()` 和 `writeTo()` 需要使用由 `ext-xmlwriter` 支援的 `Light\Xml\XmlWriter`。
+`createReader()` uses `ext-xmlreader` to read a serialized snapshot of the document. `createWriter()` and `writeTo()` use `Light\Xml\XmlWriter`, which requires `ext-xmlwriter`.
 
 ~~~php
 use Light\Xml\Linq\XDocument;
@@ -87,7 +86,7 @@ use Light\Xml\Linq\XDocument;
 $target = new XDocument();
 $writer = $target->createWriter();
 $doc->writeTo($writer);
-$writer->close(); // 提交已緩衝的內容
+$writer->close(); // Commit buffered content
 ~~~
 
-變更事件與 annotation 用法見 [XML 指南](xml.md)。
+See the [XML guide](xml.md) for change events and annotations.
